@@ -1,0 +1,19 @@
+__pycache__/
+*.pyc
+.venv/
+.env.local
+*.log
+
+# Data outputs
+data/raw/**
+data/oltp/**
+data/staging/**
+data/warehouse/**
+data/exports/**
+
+# Keep folder structure
+!data/raw/.gitkeep
+!data/oltp/.gitkeep
+!data/staging/.gitkeep
+!data/warehouse/.gitkeep
+!data/exports/.gitkeep
