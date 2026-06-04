@@ -8,7 +8,7 @@ Handles global configuration and sidebar navigation.
 import streamlit as st
 import components.shared as shared
 
-# ── Page Configuration ────────────────────────────────────────────────────────
+# Page Configuration
 st.set_page_config(
     page_title="HR Analytics Dashboard",
     page_icon="👥",
@@ -16,10 +16,10 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Custom CSS: Light & Dark Mode ─────────────────────────────────────────────
+# Custom CSS: Light & Dark Mode
 shared.inject_custom_css()
 
-# ── Sidebar Header ─────────────────────────────────────────────────────────────
+# Sidebar Header
 with st.sidebar:
     shared.add_sidebar_header()
 
@@ -33,7 +33,7 @@ with st.sidebar:
         unsafe_allow_html=True,
     )
 
-# ── Landing Page ───────────────────────────────────────────────────────────────
+# Landing Page
 st.markdown(
     """
     <div style="text-align: center; padding: 4rem 2rem 2rem;">
@@ -52,7 +52,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ── Quick-Nav Cards ────────────────────────────────────────────────────────────
+# Quick-Nav Cards
 pages = [
     {
         "icon": "🏢",
@@ -119,7 +119,7 @@ for i, page in enumerate(pages):
             unsafe_allow_html=True,
         )
 
-# ── Footer ─────────────────────────────────────────────────────────────────────
+# Footer
 st.markdown(
     """
     <div style="text-align: center; padding: 2rem 0 1rem;

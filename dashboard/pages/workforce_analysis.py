@@ -17,7 +17,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from datetime import date
 
-# ── Page Configuration ────────────────────────────────────────────────────────
+# Page Configuration
 st.set_page_config(
     page_title="Workforce Analysis · HR Analytics",
     page_icon="👤",
@@ -26,10 +26,10 @@ st.set_page_config(
 
 import components.shared as shared
 
-# ── Custom CSS ────────────────────────────────────────────────────────────────
+# Custom CSS
 shared.inject_custom_css()
 
-# ── Plotly Theme ──────────────────────────────────────────────────────────────
+# Plotly Theme
 PLOTLY_BASE = shared.get_plotly_theme()
 GRID_X = dict(showgrid=True, gridcolor="rgba(148,163,184,.15)", zeroline=False)
 GRID_Y = dict(showgrid=True, gridcolor="rgba(148,163,184,.15)", zeroline=False)
@@ -41,14 +41,12 @@ PALETTE_AGE     = ["#DBEAFE", "#93C5FD", "#3B82F6", "#1D4ED8", "#1E3A8A"]
 PALETTE_STATUS  = {"Active": "#059669", "Inactive": "#DC2626", "On Leave": "#D97706"}
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # DATA LOADING
-# ═══════════════════════════════════════════════════════════════════════════════
 
 @st.cache_data(show_spinner="Loading employee data...")
 def load_employees() -> pd.DataFrame:
-    df = pd.read_csv(shared.get_data_path("employees.csv"))
-    for col in ["hire_date", "birth_date", "termination_date"]:
+    df = shared.load_supabase_table("dim_employee")
+    for col in ["hire_date", "birth_date"]:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors="coerce")
     return df
@@ -56,12 +54,12 @@ def load_employees() -> pd.DataFrame:
 
 @st.cache_data(show_spinner="Loading department data...")
 def load_departments() -> pd.DataFrame:
-    return pd.read_csv(shared.get_data_path("departments.csv"))
+    return shared.load_supabase_table("dim_department")
 
 
 @st.cache_data(show_spinner="Loading job title data...")
 def load_jobs() -> pd.DataFrame:
-    return pd.read_csv(shared.get_data_path("jobs.csv"))
+    return shared.load_supabase_table("dim_job")
 
 
 @st.cache_data(show_spinner="Merging & enriching data...")
@@ -84,7 +82,7 @@ def build_workforce(_emp: pd.DataFrame, _dept: pd.DataFrame, _jobs: pd.DataFrame
     if job_key:
         df = df.merge(_jobs, on=job_key, how="left", suffixes=("", "_job"))
 
-    # ── Derived Columns ────────────────────────────────────────────────────────
+    # Derived Columns
 
     # Age
     today = pd.Timestamp(date.today())
@@ -127,9 +125,7 @@ def build_workforce(_emp: pd.DataFrame, _dept: pd.DataFrame, _jobs: pd.DataFrame
     return df
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # LOAD DATA
-# ═══════════════════════════════════════════════════════════════════════════════
 
 try:
     emp_raw  = load_employees()
@@ -137,14 +133,12 @@ try:
     jobs_raw = load_jobs()
     wf       = build_workforce(emp_raw, dept_raw, jobs_raw)
     data_ok  = True
-except FileNotFoundError as e:
+except Exception as e:
     data_ok    = False
     load_error = str(e)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # DETECT DYNAMIC COLUMNS
-# ═══════════════════════════════════════════════════════════════════════════════
 
 if data_ok:
     DEPT_COL     = next((c for c in ["department_name", "dept_name", "department_id"] if c in wf.columns), None)
@@ -157,9 +151,7 @@ if data_ok:
     HAS_TENURE   = "tenure_years" in wf.columns
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # SIDEBAR — Filters
-# ═══════════════════════════════════════════════════════════════════════════════
 
 with st.sidebar:
     shared.add_sidebar_header()
@@ -215,9 +207,7 @@ with st.sidebar:
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # GUARD
-# ═══════════════════════════════════════════════════════════════════════════════
 
 if not data_ok:
     st.error(
@@ -227,9 +217,7 @@ if not data_ok:
     st.stop()
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # APPLY FILTERS
-# ═══════════════════════════════════════════════════════════════════════════════
 
 df = wf.copy()
 
@@ -243,9 +231,7 @@ if sel_year   != "All" and "hire_date" in df.columns:
     df = df[df["hire_date"].dt.year == int(sel_year)]
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # COMPUTE KPI
-# ═══════════════════════════════════════════════════════════════════════════════
 
 total_emp     = len(df)
 active_emp    = (df[STATUS_COL] == "Active").sum() if STATUS_COL and "Active" in df[STATUS_COL].values else total_emp
@@ -270,9 +256,7 @@ if "hire_date" in df.columns:
     new_hires = (df["hire_date"] >= cutoff).sum()
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # PAGE HEADER
-# ═══════════════════════════════════════════════════════════════════════════════
 
 st.markdown(
     """
@@ -318,9 +302,7 @@ if badges:
 st.markdown('<hr>', unsafe_allow_html=True)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # KPI ROW
-# ═══════════════════════════════════════════════════════════════════════════════
 
 kpi_cols = st.columns(6)
 
@@ -340,9 +322,7 @@ for col, (label, value, delta) in zip(kpi_cols, kpi_data):
 st.markdown("<br>", unsafe_allow_html=True)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # TABS
-# ═══════════════════════════════════════════════════════════════════════════════
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
     "⚧ Gender",
@@ -353,9 +333,7 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 ])
 
 
-# ──────────────────────────────────────────────────────────────────────────────
 # TAB 1 · GENDER
-# ──────────────────────────────────────────────────────────────────────────────
 with tab1:
     if not GENDER_COL:
         st.info("Gender column not found in data.")
@@ -366,7 +344,7 @@ with tab1:
 
         col_donut, col_bar, col_detail = st.columns([1.2, 1.8, 1])
 
-        # ── Donut Chart ────────────────────────────────────────────────────────
+        # Donut Chart
         with col_donut:
             fig_donut = go.Figure(
                 go.Pie(
@@ -395,7 +373,7 @@ with tab1:
             )
             st.plotly_chart(fig_donut, use_container_width=True)
 
-        # ── Gender per Department ──────────────────────────────────────────────
+        # Gender per Department
         with col_bar:
             if DEPT_COL:
                 gdept = (
@@ -439,7 +417,7 @@ with tab1:
             else:
                 st.info("Department column not found.")
 
-        # ── Gender Stats Cards ─────────────────────────────────────────────────
+        # Gender Stats Cards
         with col_detail:
             st.markdown(
                 '<div style="font-size:.85rem;font-weight:700;margin-bottom:.75rem;">'
@@ -471,7 +449,7 @@ with tab1:
                     unsafe_allow_html=True,
                 )
 
-        # ── Gender × Status ────────────────────────────────────────────────────
+        # Gender × Status
         if STATUS_COL:
             st.markdown("<br>", unsafe_allow_html=True)
             gs = (
@@ -501,16 +479,14 @@ with tab1:
             st.plotly_chart(fig_gs, use_container_width=True)
 
 
-# ──────────────────────────────────────────────────────────────────────────────
 # TAB 2 · AGE GROUP
-# ──────────────────────────────────────────────────────────────────────────────
 with tab2:
     if not HAS_AGE:
         st.info("Column `birth_date` not found. Cannot compute age.")
     else:
         col_pyr, col_line = st.columns([1.4, 1.6])
 
-        # ── Population Pyramid (Gender × Age Group) ───────────────────────────
+        # Population Pyramid (Gender × Age Group)
         with col_pyr:
             if GENDER_COL and "age_group" in df.columns:
                 pyramid_data = (
@@ -578,7 +554,7 @@ with tab2:
                 )
                 st.plotly_chart(fig_age_bar, use_container_width=True)
 
-        # ── Box Plot Age per Department ────────────────────────────────────────
+        # Box Plot Age per Department
         with col_line:
             if DEPT_COL:
                 top_d = (
@@ -622,7 +598,7 @@ with tab2:
                 )
                 st.plotly_chart(fig_hist_age, use_container_width=True)
 
-        # ── Age Group Stats Table ──────────────────────────────────────────────
+        # Age Group Stats Table
         st.markdown("<br>", unsafe_allow_html=True)
         age_stats = (
             df.groupby("age_group", observed=True)
@@ -656,9 +632,7 @@ with tab2:
         )
 
 
-# ──────────────────────────────────────────────────────────────────────────────
 # TAB 3 · DEPARTMENT
-# ──────────────────────────────────────────────────────────────────────────────
 with tab3:
     if not DEPT_COL:
         st.info("Department column not found in data.")
@@ -681,7 +655,7 @@ with tab3:
 
         col_bar, col_treemap = st.columns([1.6, 1.4])
 
-        # ── Horizontal Bar Headcount ───────────────────────────────────────────
+        # Horizontal Bar Headcount
         with col_bar:
             dept_sorted = dept_top.sort_values("headcount", ascending=True)
             fig_dept_bar = go.Figure(
@@ -708,7 +682,7 @@ with tab3:
             )
             st.plotly_chart(fig_dept_bar, use_container_width=True)
 
-        # ── Treemap ────────────────────────────────────────────────────────────
+        # Treemap
         with col_treemap:
             fig_tree = px.treemap(
                 dept_summary,
@@ -731,7 +705,7 @@ with tab3:
             )
             st.plotly_chart(fig_tree, use_container_width=True)
 
-        # ── Scatter: Headcount vs Avg Age / Tenure ─────────────────────────────
+        # Scatter: Headcount vs Avg Age / Tenure
         st.markdown("<br>", unsafe_allow_html=True)
         col_sc1, col_sc2 = st.columns(2)
 
@@ -789,7 +763,7 @@ with tab3:
                 )
                 st.plotly_chart(fig_sc_ten, use_container_width=True)
 
-        # ── Detail Table ───────────────────────────────────────────────────────
+        # Detail Table
         st.markdown(
             '<div style="font-size:.85rem;font-weight:600;margin:.5rem 0;">'
             '📋 Department Detail Table</div>',
@@ -824,13 +798,11 @@ with tab3:
         )
 
 
-# ──────────────────────────────────────────────────────────────────────────────
 # TAB 4 · JOB & TENURE
-# ──────────────────────────────────────────────────────────────────────────────
 with tab4:
     col_job, col_ten = st.columns(2)
 
-    # ── Top Job Titles ─────────────────────────────────────────────────────────
+    # Top Job Titles
     with col_job:
         if not JOB_COL:
             st.info("Job title column not found in data.")
@@ -867,7 +839,7 @@ with tab4:
             )
             st.plotly_chart(fig_job, use_container_width=True)
 
-    # ── Tenure Distribution ────────────────────────────────────────────────────
+    # Tenure Distribution
     with col_ten:
         if not HAS_TENURE:
             st.info("Column `hire_date` not found. Cannot compute tenure.")
@@ -931,7 +903,7 @@ with tab4:
             )
             st.plotly_chart(fig_g, use_container_width=True)
 
-    # ── Tenure per Department (Heatmap) ────────────────────────────────────────
+    # Tenure per Department (Heatmap)
     if HAS_TENURE and DEPT_COL:
         st.markdown("<br>", unsafe_allow_html=True)
         ten_dept = (
@@ -966,9 +938,7 @@ with tab4:
         st.plotly_chart(fig_heat, use_container_width=True)
 
 
-# ──────────────────────────────────────────────────────────────────────────────
 # TAB 5 · RECRUITMENT TREND
-# ──────────────────────────────────────────────────────────────────────────────
 with tab5:
     if "hire_date" not in df.columns:
         st.info("Column `hire_date` not found in data.")
@@ -984,7 +954,7 @@ with tab5:
 
         col_trend, col_annual = st.columns([2, 1])
 
-        # ── Monthly Trend Area Chart ───────────────────────────────────────────
+        # Monthly Trend Area Chart
         with col_trend:
             fig_hire = make_subplots(specs=[[{"secondary_y": True}]])
 
@@ -1034,7 +1004,7 @@ with tab5:
             )
             st.plotly_chart(fig_hire, use_container_width=True)
 
-        # ── Recruitment by Year ────────────────────────────────────────────────
+        # Recruitment by Year
         with col_annual:
             hire_yearly = (
                 df.groupby(df["hire_date"].dt.year)
@@ -1067,7 +1037,7 @@ with tab5:
             )
             st.plotly_chart(fig_yr, use_container_width=True)
 
-        # ── Recruitment per Department (Stacked Bar per Year) ──────────────────
+        # Recruitment per Department (Stacked Bar per Year)
         if DEPT_COL:
             st.markdown("<br>", unsafe_allow_html=True)
             text_top_n_dept = str(top_n_dept)
@@ -1110,9 +1080,7 @@ with tab5:
             st.plotly_chart(fig_hd, use_container_width=True)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # OPTIONAL DETAIL TABLE
-# ═══════════════════════════════════════════════════════════════════════════════
 
 if show_table:
     st.markdown('<hr>', unsafe_allow_html=True)
@@ -1153,9 +1121,7 @@ if show_table:
     st.caption(f"Showing {len(show_df):,} rows out of {len(wf):,} total employees")
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # FOOTER
-# ═══════════════════════════════════════════════════════════════════════════════
 
 st.markdown("<br>", unsafe_allow_html=True)
 st.markdown(

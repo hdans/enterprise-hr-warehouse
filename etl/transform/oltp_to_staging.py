@@ -7,7 +7,6 @@ def transform_oltp_to_staging(base_dir: str):
     stg_dir = os.path.join(base_dir, "data", "staging")
     os.makedirs(stg_dir, exist_ok=True)
 
-    # Dictionary of (source_dir, source_file, staging_file)
     files_to_stage = [
         (oltp_master, "employees.csv", "stg_employees.csv"),
         (oltp_master, "jobs.csv", "stg_jobs.csv"),
@@ -25,7 +24,6 @@ def transform_oltp_to_staging(base_dir: str):
         
         if os.path.exists(source_path):
             df = pd.read_csv(source_path)
-            # In a real scenario, we might cast types or handle nulls here
             df.to_csv(target_path, index=False)
             print(f"Staged {source_file} to {target_file} ({len(df)} rows)")
         else:

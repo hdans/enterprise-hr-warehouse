@@ -22,7 +22,7 @@ from datetime import date, timedelta
 from pathlib import Path
 import components.shared as shared
 
-# ── Page Configuration ────────────────────────────────────────────────────────
+# Page Configuration
 st.set_page_config(
     page_title="Attendance Analysis · HR Analytics",
     page_icon="🕐",
@@ -30,10 +30,10 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Custom CSS ────────────────────────────────────────────────────────────────
+# Custom CSS
 shared.inject_custom_css()
 
-# ── Plotly Base Theme ─────────────────────────────────────────────────────────
+# Plotly Base Theme
 PL = shared.get_plotly_theme()
 GX  = dict(showgrid=True,  gridcolor="rgba(148,163,184,.15)", zeroline=False)
 GY  = dict(showgrid=True,  gridcolor="rgba(148,163,184,.15)", zeroline=False)
@@ -63,48 +63,23 @@ STATUS_PAL = {
 }
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # DATA LOADING
-# ═══════════════════════════════════════════════════════════════════════════════
+
+@st.cache_data(show_spinner="Loading date data...")
+def load_dates() -> pd.DataFrame:
+    df = shared.load_supabase_table("dim_date")
+    return df
 
 @st.cache_data(show_spinner="Loading attendance data (1M+ rows, please wait)...")
-def load_attendance() -> pd.DataFrame:
-    df = pd.read_csv(shared.get_data_path("attendance_logs.csv"))
+def load_attendance(dates_df: pd.DataFrame) -> pd.DataFrame:
+    df = shared.load_supabase_table("fact_attendance")
 
-    # ── Detect & parse date column ────────────────────────────────────────────
-    date_col = next(
-        (c for c in df.columns
-         if any(k in c.lower() for k in ["date", "tanggal", "log_date", "work_date", "attendance_date"])),
-        None,
-    )
-    if date_col:
-        df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
-        if date_col != "date":
-            df = df.rename(columns={date_col: "date"})
-    else:
-        # fallback: try parsing first column
-        df["date"] = pd.to_datetime(df.iloc[:, 0], errors="coerce")
-
-    # ── Detect check-in / check-out columns ───────────────────────────────────
-    for alias, target in [
-        (["check_in", "time_in", "clock_in", "masuk", "checkin"], "check_in"),
-        (["check_out", "time_out", "clock_out", "keluar", "checkout"], "check_out"),
-    ]:
-        match = next((c for c in df.columns if c.lower() in alias), None)
-        if match and match != target:
-            df = df.rename(columns={match: target})
-
-    # ── Detect attendance status column ───────────────────────────────────────
-    status_match = next(
-        (c for c in df.columns
-         if any(k in c.lower() for k in ["status", "attendance_status", "kehadiran", "type"])),
-        None,
-    )
-    if status_match and status_match != "status":
-        df = df.rename(columns={status_match: "status"})
-
-    # ── Derived columns ───────────────────────────────────────────────────────
+    if not dates_df.empty and "date_id" in df.columns:
+        df = df.merge(dates_df[["date_id", "full_date"]], on="date_id", how="left")
+        df = df.rename(columns={"full_date": "date"})
+    
     if "date" in df.columns:
+        df["date"] = pd.to_datetime(df["date"], errors="coerce")
         df["year"]       = df["date"].dt.year
         df["month"]      = df["date"].dt.month
         df["month_name"] = df["date"].dt.strftime("%b %Y")
@@ -113,36 +88,22 @@ def load_attendance() -> pd.DataFrame:
         df["month_ts"]   = df["date"].dt.to_period("M").dt.to_timestamp()
         df["week_ts"]    = df["date"].dt.to_period("W").dt.to_timestamp()
 
-    # ── Calculate work_hours if check_in & check_out present ──────────────────
-    if "check_in" in df.columns and "check_out" in df.columns:
-        try:
-            # parse as time string, join with date
-            ci = pd.to_datetime(
-                df["date"].dt.strftime("%Y-%m-%d") + " " + df["check_in"].astype(str),
-                errors="coerce",
-            )
-            co = pd.to_datetime(
-                df["date"].dt.strftime("%Y-%m-%d") + " " + df["check_out"].astype(str),
-                errors="coerce",
-            )
-            df["work_hours"] = ((co - ci).dt.total_seconds() / 3600).clip(lower=0, upper=24)
-        except Exception:
-            pass
-
-    # ── Flag late if is_late / late column exists ─────────────────────────────
-    late_col = next(
-        (c for c in df.columns if any(k in c.lower() for k in ["late", "terlambat", "is_late"])),
-        None,
-    )
-    if late_col and late_col != "is_late":
-        df = df.rename(columns={late_col: "is_late"})
+    if "attendance_status" in df.columns:
+        df = df.rename(columns={"attendance_status": "status"})
+        
+    if "check_in_time" in df.columns:
+        df = df.rename(columns={"check_in_time": "check_in"})
+    if "check_out_time" in df.columns:
+        df = df.rename(columns={"check_out_time": "check_out"})
+    if "hours_worked" in df.columns:
+        df = df.rename(columns={"hours_worked": "work_hours"})
 
     return df
 
 
 @st.cache_data(show_spinner="Loading employee data...")
 def load_employees() -> pd.DataFrame:
-    df = pd.read_csv(shared.get_data_path("employees.csv"))
+    df = shared.load_supabase_table("dim_employee")
     for col in ["hire_date", "birth_date"]:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors="coerce")
@@ -151,10 +112,10 @@ def load_employees() -> pd.DataFrame:
 
 @st.cache_data(show_spinner="Loading department data...")
 def load_departments() -> pd.DataFrame:
-    return pd.read_csv(shared.get_data_path("departments.csv"))
+    return shared.load_supabase_table("dim_department")
 
 
-# ── Merge: attendance + employee info ─────────────────────────────────────────
+# Merge: attendance + employee info
 @st.cache_data(show_spinner="Merging attendance & employee data...")
 def build_att(_att: pd.DataFrame, _emp: pd.DataFrame, _dept: pd.DataFrame) -> pd.DataFrame:
     """
@@ -182,7 +143,7 @@ def build_att(_att: pd.DataFrame, _emp: pd.DataFrame, _dept: pd.DataFrame) -> pd
     return merged
 
 
-# ── Heavy aggregations cached separately ──────────────────────────────────────
+# Heavy aggregations cached separately
 
 @st.cache_data(show_spinner=False)
 def agg_monthly(_df: pd.DataFrame) -> pd.DataFrame:
@@ -290,21 +251,20 @@ def worst_incomplete_logs(_df: pd.DataFrame, top_n: int = 20) -> pd.DataFrame:
     return result
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # LOAD DATA
-# ═══════════════════════════════════════════════════════════════════════════════
 
 try:
-    att_raw  = load_attendance()
+    dates_raw = load_dates()
+    att_raw  = load_attendance(dates_raw)
     emp_raw  = load_employees()
     dept_raw = load_departments()
     att_full = build_att(att_raw, emp_raw, dept_raw)
     data_ok  = True
-except FileNotFoundError as e:
-    data_ok    = False
-    load_error = str(e)
+except Exception as e:
+    data_ok = False
+    load_err = str(e)
 
-# ── Dynamic Column Detection ──────────────────────────────────────────────────
+# Dynamic Column Detection
 if data_ok:
     HAS_STATUS  = "status" in att_full.columns
     HAS_DATE    = "date"   in att_full.columns
@@ -317,9 +277,7 @@ if data_ok:
     DATE_MAX = att_full["date"].max().date() if HAS_DATE else date.today()
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # SIDEBAR — Filters
-# ═══════════════════════════════════════════════════════════════════════════════
 
 with st.sidebar:
     shared.add_sidebar_header()
@@ -331,7 +289,7 @@ with st.sidebar:
     )
 
     if data_ok and HAS_DATE:
-        # ── Quick-select preset ────────────────────────────────────────────────
+        # Quick-select preset
         preset = st.selectbox(
             "Quick Period",
             ["Custom", "Last 30 Days", "Last 90 Days",
@@ -353,7 +311,7 @@ with st.sidebar:
         else:
             d_start, d_end = DATE_MIN, DATE_MAX   # default for Custom
 
-        # ── Manual date picker (active only during Custom) ────────────────────
+        # Manual date picker (active only during Custom)
         disabled_picker = preset != "Custom"
         col_d1, col_d2 = st.columns(2)
         with col_d1:
@@ -409,9 +367,7 @@ with st.sidebar:
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # GUARD
-# ═══════════════════════════════════════════════════════════════════════════════
 
 if not data_ok:
     st.error(
@@ -421,9 +377,7 @@ if not data_ok:
     st.stop()
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # APPLY FILTERS
-# ═══════════════════════════════════════════════════════════════════════════════
 
 df = att_full.copy()
 
@@ -443,9 +397,7 @@ if sel_status != "All" and HAS_STATUS:
 total_records = len(df)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # COMPUTE KPI
-# ═══════════════════════════════════════════════════════════════════════════════
 
 unique_emp     = df["employee_id"].nunique()
 working_days   = df["date"].nunique() if HAS_DATE else 0
@@ -467,9 +419,7 @@ else:
 avg_hours = df["work_hours"].mean() if HAS_HOURS else 0.0
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # PAGE HEADER
-# ═══════════════════════════════════════════════════════════════════════════════
 
 st.markdown(
     """
@@ -493,7 +443,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# ── Info bar time range & record count ────────────────────────────────────────
+# Info bar time range & record count
 date_label = (
     f"{sel_start.strftime('%d %b %Y')} — {sel_end.strftime('%d %b %Y')}"
     if HAS_DATE else "All Data"
@@ -517,9 +467,7 @@ st.markdown(f'<div style="margin-bottom:1.25rem;">{badge_html}</div>', unsafe_al
 st.markdown('<hr>', unsafe_allow_html=True)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # KPI ROW
-# ═══════════════════════════════════════════════════════════════════════════════
 
 k1, k2, k3, k4, k5, k6 = st.columns(6)
 
@@ -550,9 +498,7 @@ with k6:
 st.markdown("<br>", unsafe_allow_html=True)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # STATUS SUMMARY BAR
-# ═══════════════════════════════════════════════════════════════════════════════
 
 if HAS_STATUS and total_records > 0:
     status_counts = agg_by_status(df)
@@ -578,9 +524,7 @@ if HAS_STATUS and total_records > 0:
         )
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # TABS
-# ═══════════════════════════════════════════════════════════════════════════════
 
 tab1, tab2, tab3, tab4 = st.tabs([
     "📈 Monthly Trend",
@@ -590,16 +534,14 @@ tab1, tab2, tab3, tab4 = st.tabs([
 ])
 
 
-# ──────────────────────────────────────────────────────────────────────────────
 # TAB 1 · MONTHLY TREND
-# ──────────────────────────────────────────────────────────────────────────────
 with tab1:
     monthly = agg_monthly(df)
 
     if monthly.empty:
         st.info("Monthly trend data not available. Make sure date column is correctly detected.")
     else:
-        # ── Chart 1: Attendance Rate Trend ────────────────────────────────────
+        # Chart 1: Attendance Rate Trend
         col_trend, col_donut = st.columns([2.4, 1])
 
         with col_trend:
@@ -655,7 +597,7 @@ with tab1:
             )
             st.plotly_chart(fig_trend, use_container_width=True)
 
-        # ── Donut Chart composition ───────────────────────────────────────────
+        # Donut Chart composition
         with col_donut:
             status_df = agg_by_status(df)
             if not status_df.empty:
@@ -686,7 +628,7 @@ with tab1:
                 )
                 st.plotly_chart(fig_donut, use_container_width=True)
 
-        # ── Chart 2: Monthly Rate Lines ───────────────────────────────────────
+        # Chart 2: Monthly Rate Lines
         st.markdown("<br>", unsafe_allow_html=True)
         fig_rate = go.Figure()
 
@@ -725,7 +667,7 @@ with tab1:
         )
         st.plotly_chart(fig_rate, use_container_width=True)
 
-        # ── Monthly Summary Table ─────────────────────────────────────────────
+        # Monthly Summary Table
         with st.expander("📋 View monthly data table", expanded=False):
             show_monthly = monthly.copy()
             show_monthly["month_ts"] = show_monthly["month_ts"].dt.strftime("%b %Y")
@@ -749,9 +691,7 @@ with tab1:
             st.dataframe(show_monthly[cols_show_m], use_container_width=True, hide_index=True)
 
 
-# ──────────────────────────────────────────────────────────────────────────────
 # TAB 2 · DAILY PATTERN
-# ──────────────────────────────────────────────────────────────────────────────
 with tab2:
     weekday_df = agg_by_weekday(df)
 
@@ -760,7 +700,7 @@ with tab2:
     else:
         col_wd1, col_wd2 = st.columns(2)
 
-        # ── Bar: Total log per day ─────────────────────────────────────────────
+        # Bar: Total log per day
         with col_wd1:
             fig_wd = go.Figure(
                 go.Bar(
@@ -785,7 +725,7 @@ with tab2:
             )
             st.plotly_chart(fig_wd, use_container_width=True)
 
-        # ── Bar: Absenteeism & Late Rate per Day ──────────────────────────────
+        # Bar: Absenteeism & Late Rate per Day
         with col_wd2:
             fig_wd2 = go.Figure()
             fig_wd2.add_trace(
@@ -819,7 +759,7 @@ with tab2:
             )
             st.plotly_chart(fig_wd2, use_container_width=True)
 
-    # ── Heatmap: Status × Weekday × Month ─────────────────────────────────────
+    # Heatmap: Status × Weekday × Month
     if HAS_STATUS and HAS_DATE and "weekday" in df.columns:
         st.markdown("<br>", unsafe_allow_html=True)
         ORDER   = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
@@ -860,9 +800,7 @@ with tab2:
             st.plotly_chart(fig_hm, use_container_width=True)
 
 
-# ──────────────────────────────────────────────────────────────────────────────
 # TAB 3 · BY DEPARTMENT
-# ──────────────────────────────────────────────────────────────────────────────
 with tab3:
     dept_df_agg = agg_by_dept(df)
 
@@ -873,7 +811,7 @@ with tab3:
 
         col_d1, col_d2 = st.columns(2)
 
-        # ── Grouped bar: rate present, incomplete & late per dept ──────────────
+        # Grouped bar: rate present, incomplete & late per dept
         with col_d1:
             fig_dept_rate = go.Figure()
             for col_name, color, label in [
@@ -907,7 +845,7 @@ with tab3:
             )
             st.plotly_chart(fig_dept_rate, use_container_width=True)
 
-        # ── Dot / lollipop: attendance rate ranking ────────────────────────────
+        # Dot / lollipop: attendance rate ranking
         with col_d2:
             dept_ranked = dept_df_agg.sort_values("att_rate", ascending=True).tail(top_n_dept)
             colors_dot  = [C_PRESENT if v >= 90 else C_ABSENT for v in dept_ranked["att_rate"]]
@@ -948,7 +886,7 @@ with tab3:
             )
             st.plotly_chart(fig_dot, use_container_width=True)
 
-        # ── Department monthly trend line chart ────────────────────────────────
+        # Department monthly trend line chart
         if HAS_DATE and DEPT_COL and "month_ts" in df.columns:
             st.markdown("<br>", unsafe_allow_html=True)
             top_dept_names = dept_df_agg.nlargest(min(6, top_n_dept), "total")["department"].tolist()
@@ -990,7 +928,7 @@ with tab3:
                 )
                 st.plotly_chart(fig_dept_trend, use_container_width=True)
 
-        # ── Department summary table ───────────────────────────────────────────
+        # Department summary table
         st.markdown("<br>", unsafe_allow_html=True)
         show_dept = dept_df_agg.rename(columns={
             "department":      "Department",
@@ -1020,11 +958,9 @@ with tab3:
         )
 
 
-# ──────────────────────────────────────────────────────────────────────────────
 # TAB 4 · ABSENTEEISM & LATENESS
-# ──────────────────────────────────────────────────────────────────────────────
 with tab4:
-    # ── Late distribution ─────────────────────────────────────────────────────
+    # Late distribution
     st.markdown(
         '<div style="font-size:.9rem;font-weight:700;margin-bottom:.6rem;">'
         '🟡 Late Distribution & Trend</div>',
@@ -1037,7 +973,7 @@ with tab4:
         if not late_df.empty:
             col_late1, col_late2 = st.columns(2)
 
-            # ── Pie: late per dept ─────────────────────────────────────────
+            # Pie: late per dept
             with col_late1:
                 if DEPT_COL and DEPT_COL in late_df.columns:
                     late_dept = late_df[DEPT_COL].value_counts().nlargest(8).reset_index()
@@ -1068,7 +1004,7 @@ with tab4:
                     )
                     st.plotly_chart(fig_late_pie, use_container_width=True)
 
-            # ── Bar: late per workday ──────────────────────────────────────
+            # Bar: late per workday
             with col_late2:
                 if "weekday" in late_df.columns:
                     ORDER_  = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"]
@@ -1105,7 +1041,7 @@ with tab4:
     else:
         st.info("Column 'status' not detected. Cannot identify late arrivals.")
 
-    # ── Monthly late trend (full-width) ──────────────────────────────────────
+    # Monthly late trend (full-width)
     st.markdown("<br>", unsafe_allow_html=True)
     monthly2 = agg_monthly(df)
     if not monthly2.empty and "late" in monthly2.columns:
@@ -1145,7 +1081,7 @@ with tab4:
         )
         st.plotly_chart(fig_late_trend, use_container_width=True)
 
-    # ── Top Employees with Incomplete Logs ────────────────────────────────────
+    # Top Employees with Incomplete Logs
     st.markdown("<br><hr><br>", unsafe_allow_html=True)
     st.markdown(
         '<div style="font-size:.9rem;font-weight:700;margin-bottom:.6rem;">'
@@ -1184,9 +1120,7 @@ with tab4:
 
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # FOOTER
-# ═══════════════════════════════════════════════════════════════════════════════
 
 st.markdown("<br>", unsafe_allow_html=True)
 st.markdown(

@@ -12,7 +12,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import numpy as np
 
-# ── Page Config ────────────────────────────────────────────────────────────────
+# Page Config
 st.set_page_config(
     page_title="Payroll Analysis · HR Analytics",
     page_icon="💰",
@@ -21,10 +21,10 @@ st.set_page_config(
 
 import components.shared as shared
 
-# ── Custom CSS ────────────────────────────────────────────────────────────────
+# Custom CSS
 shared.inject_custom_css()
 
-# ── Plotly Theme Helper ────────────────────────────────────────────────────────
+# Plotly Theme Helper
 def plotly_theme() -> dict:
     return shared.get_plotly_theme()
 
@@ -41,14 +41,23 @@ def fmt_currency(value: float, short: bool = False) -> str:
 PALETTE = ["#14b8a6","#3b82f6","#8b5cf6","#f59e0b","#f43f5e",
            "#10b981","#f97316","#06b6d4","#ec4899","#84cc16"]
 
-# ── Data Loaders ───────────────────────────────────────────────────────────────
+# Data Loaders
 
 @st.cache_data(show_spinner=False)
-def load_payroll() -> pd.DataFrame:
-    df = pd.read_csv(shared.get_data_path("payroll_transactions.csv"))
+def load_dates() -> pd.DataFrame:
+    df = shared.load_supabase_table("dim_date")
+    return df
+
+@st.cache_data(show_spinner=False)
+def load_payroll(dates_df: pd.DataFrame) -> pd.DataFrame:
+    df = shared.load_supabase_table("fact_payroll")
     df.columns = df.columns.str.strip().str.lower().str.replace(r"\s+", "_", regex=True)
+    
+    if not dates_df.empty and "date_id" in df.columns:
+        df = df.merge(dates_df[["date_id", "full_date"]], on="date_id", how="left")
+        
     # Detect & parse date column
-    for col in ["pay_date","payment_date","payroll_date","transaction_date","date","period"]:
+    for col in ["full_date","pay_date","payment_date","payroll_date","transaction_date","date","period"]:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors="coerce")
             df.rename(columns={col: "pay_date"}, inplace=True)
@@ -57,13 +66,13 @@ def load_payroll() -> pd.DataFrame:
 
 @st.cache_data(show_spinner=False)
 def load_employees() -> pd.DataFrame:
-    df = pd.read_csv(shared.get_data_path("employees.csv"))
+    df = shared.load_supabase_table("dim_employee")
     df.columns = df.columns.str.strip().str.lower().str.replace(r"\s+", "_", regex=True)
     return df
 
 @st.cache_data(show_spinner=False)
 def load_departments() -> pd.DataFrame:
-    df = pd.read_csv(shared.get_data_path("departments.csv"))
+    df = shared.load_supabase_table("dim_department")
     df.columns = df.columns.str.strip().str.lower().str.replace(r"\s+", "_", regex=True)
     return df
 
@@ -107,17 +116,15 @@ def build_master(_pay: pd.DataFrame, _emp: pd.DataFrame, _dept: pd.DataFrame) ->
 
     return df
 
-# ── Load Data ──────────────────────────────────────────────────────────────────
+# Load Data
 with st.spinner("Loading payroll data…"):
     try:
-        raw_pay  = load_payroll()
+        raw_dates = load_dates()
+        raw_pay  = load_payroll(raw_dates)
         raw_emp  = load_employees()
         raw_dept = load_departments()
         df = build_master(raw_pay, raw_emp, raw_dept)
         data_ok = True
-    except FileNotFoundError as e:
-        st.error(f"❌ File not found: `{e.filename}`. Make sure `data/oltp/` contains all required CSV files.")
-        data_ok = False
     except Exception as e:
         st.error(f"❌ Error loading data: {e}")
         data_ok = False
@@ -129,7 +136,7 @@ if "salary_amount" not in df.columns:
     st.warning("⚠️ Salary amount column not found. Ensure `payroll_transactions.csv` has a column named `salary`, `amount`, `net_salary`, or `gross_salary`.")
     st.stop()
 
-# ── Page Header ────────────────────────────────────────────────────────────────
+# Page Header
 st.markdown("""
 <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1.5rem;">
     <span style="font-size:1.8rem;">💰</span>
@@ -145,7 +152,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Sidebar Filters ────────────────────────────────────────────────────────────
+# Sidebar Filters
 with st.sidebar:
     shared.add_sidebar_header()
     st.markdown("### 🎛️ Filters")
@@ -172,7 +179,7 @@ with st.sidebar:
     st.markdown("---")
     st.caption("💡 Filters apply to all visualizations on this page.")
 
-# ── Apply Filters ──────────────────────────────────────────────────────────────
+# Apply Filters
 fdf = df.copy()
 
 if sel_depts and "department_name" in fdf.columns:
@@ -182,7 +189,7 @@ if date_range and len(date_range) == 2 and "pay_date" in fdf.columns:
     fdf = fdf[(fdf["pay_date"].dt.date >= date_range[0]) &
               (fdf["pay_date"].dt.date <= date_range[1])]
 
-# ── Derived Columns ────────────────────────────────────────────────────────────
+# Derived Columns
 if "pay_date" in fdf.columns and fdf["pay_date"].notna().any():
     fdf["year_month"] = fdf["pay_date"].dt.to_period("M").astype(str)
     fdf["year_q"]     = fdf["pay_date"].dt.to_period("Q").astype(str)
@@ -198,7 +205,7 @@ else:
     this_m_df = fdf
     prev_m_df = pd.DataFrame()
 
-# ── KPI Calculations ───────────────────────────────────────────────────────────
+# KPI Calculations
 total_all        = fdf["salary_amount"].sum()
 total_this_month = this_m_df["salary_amount"].sum()
 total_prev_month = prev_m_df["salary_amount"].sum() if not prev_m_df.empty else None
@@ -210,7 +217,7 @@ n_transactions  = len(fdf)
 
 theme = plotly_theme()
 
-# ── KPI Cards ─────────────────────────────────────────────────────────────────
+# KPI Cards
 def delta_html(val):
     if val is None: return '<div class="kpi-sub">previous month not available</div>'
     icon = "▲" if val >= 0 else "▼"
@@ -231,7 +238,7 @@ with col_k4:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# ── ROW 1 — Payroll Spend Trend (Area) ────────────────────────────────────────
+# ROW 1 — Payroll Spend Trend (Area)
 st.markdown('<div class="chart-card">', unsafe_allow_html=True)
 st.markdown('<div class="chart-title">📈 Payroll Spend Over Time</div>', unsafe_allow_html=True)
 st.markdown('<div class="chart-sub">Total salary paid per period — use the granularity filter in the sidebar</div>', unsafe_allow_html=True)
@@ -283,7 +290,7 @@ else:
 st.plotly_chart(fig_trend, use_container_width=True, config={"displayModeBar": False})
 st.markdown('</div>', unsafe_allow_html=True)
 
-# ── ROW 2 — Department Allocation (Bar) + Donut Share ─────────────────────────
+# ROW 2 — Department Allocation (Bar) + Donut Share
 col1, col2 = st.columns([3, 2], gap="medium")
 
 with col1:
@@ -376,7 +383,7 @@ with col2:
     st.plotly_chart(fig_donut, use_container_width=True, config={"displayModeBar": False})
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ── ROW 3 — Salary Components + Distribution ──────────────────────────────────
+# ROW 3 — Salary Components + Distribution
 col3, col4 = st.columns([2, 3], gap="medium")
 
 with col3:
@@ -476,7 +483,7 @@ with col4:
     st.plotly_chart(fig_hist, use_container_width=True, config={"displayModeBar": False})
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ── ROW 4 — Monthly Heatmap per Department ─────────────────────────────────────
+# ROW 4 — Monthly Heatmap per Department
 if has_date and "department_name" in fdf.columns:
     st.markdown('<div class="chart-card">', unsafe_allow_html=True)
     st.markdown('<div class="chart-title">🗓️ Monthly Payroll Heatmap by Department</div>', unsafe_allow_html=True)
@@ -501,7 +508,7 @@ if has_date and "department_name" in fdf.columns:
     st.plotly_chart(fig_heat, use_container_width=True, config={"displayModeBar": False})
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ── ROW 5 — Salary Distribution Box Plot ──────────────────────────────────────
+# ROW 5 — Salary Distribution Box Plot
 if "department_name" in fdf.columns:
     st.markdown('<div class="chart-card">', unsafe_allow_html=True)
     st.markdown('<div class="chart-title">📦 Salary Distribution by Department</div>', unsafe_allow_html=True)
@@ -526,7 +533,7 @@ if "department_name" in fdf.columns:
     st.plotly_chart(fig_box, use_container_width=True, config={"displayModeBar": False})
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ── ROW 6 — Department Summary Table ──────────────────────────────────────────
+# ROW 6 — Department Summary Table
 if "department_name" in fdf.columns:
     st.markdown('<div class="chart-card">', unsafe_allow_html=True)
     st.markdown('<div class="chart-title">📋 Payroll Summary by Department</div>', unsafe_allow_html=True)
@@ -561,7 +568,7 @@ if "department_name" in fdf.columns:
     )
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ── Raw Data Preview ───────────────────────────────────────────────────────────
+# Raw Data Preview
 with st.expander("🗂️ Raw Data Preview (after filters)", expanded=False):
     preview_cols = [c for c in [
         "employee_id", "employee_name", "department_name",
@@ -573,7 +580,7 @@ with st.expander("🗂️ Raw Data Preview (after filters)", expanded=False):
     st.dataframe(fdf[preview_cols].head(500), use_container_width=True, height=300)
     st.caption(f"Showing first 500 rows of {len(fdf):,} rows matching current filters.")
 
-# ── Footer ─────────────────────────────────────────────────────────────────────
+# Footer
 st.markdown("""
 <div style="text-align:center; padding: 2rem 0 1rem; opacity:.32; font-size:.76rem;">
     HR Analytics Dashboard &nbsp;·&nbsp; Payroll Analysis

@@ -1,1 +1,0 @@
-Analytical SQL query collection.

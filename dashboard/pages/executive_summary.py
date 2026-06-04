@@ -16,7 +16,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from pathlib import Path
 
-# ── Page Configuration ────────────────────────────────────────────────────────
+# Page Configuration
 st.set_page_config(
     page_title="Executive Summary · HR Analytics",
     page_icon="🏢",
@@ -25,51 +25,54 @@ st.set_page_config(
 
 import components.shared as shared
 
-# ── Custom CSS ────────────────────────────────────────────────────────────────
+# Custom CSS
 shared.inject_custom_css()
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # DATA LOADING — All loaders use @st.cache_data
-# ═══════════════════════════════════════════════════════════════════════════════
+
+@st.cache_data(show_spinner="Loading date data…")
+def load_dates() -> pd.DataFrame:
+    df = shared.load_supabase_table("dim_date")
+    if "full_date" in df.columns:
+        df["full_date"] = pd.to_datetime(df["full_date"], errors="coerce")
+    return df
 
 @st.cache_data(show_spinner="Loading employee data…")
 def load_employees() -> pd.DataFrame:
-    df = pd.read_csv(shared.get_data_path("employees.csv"))
-    for col in ["hire_date", "birth_date", "termination_date"]:
+    df = shared.load_supabase_table("dim_employee")
+    for col in ["hire_date", "birth_date"]:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors="coerce")
     return df
 
 
 @st.cache_data(show_spinner="Loading payroll data…")
-def load_payroll() -> pd.DataFrame:
-    df = pd.read_csv(shared.get_data_path("payroll_transactions.csv"))
-    for col in ["pay_date", "payment_date", "pay_period", "payroll_period"]:
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors="coerce")
+def load_payroll(dates_df: pd.DataFrame) -> pd.DataFrame:
+    df = shared.load_supabase_table("fact_payroll")
+    if not dates_df.empty and "date_id" in df.columns:
+        df = df.merge(dates_df[["date_id", "full_date"]], on="date_id", how="left")
     return df
 
 
 @st.cache_data(show_spinner="Loading performance data…")
-def load_performance() -> pd.DataFrame:
-    df = pd.read_csv(shared.get_data_path("performance_logs.csv"))
-    for col in ["review_date", "performance_date", "period", "date"]:
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors="coerce")
+def load_performance(dates_df: pd.DataFrame) -> pd.DataFrame:
+    df = shared.load_supabase_table("fact_employee_performance")
+    if not dates_df.empty and "date_id" in df.columns:
+        df = df.merge(dates_df[["date_id", "full_date"]], on="date_id", how="left")
     return df
 
 
 @st.cache_data(show_spinner="Loading department data…")
 def load_departments() -> pd.DataFrame:
-    return pd.read_csv(shared.get_data_path("departments.csv"))
+    return shared.load_supabase_table("dim_department")
 
 
 @st.cache_data(show_spinner="Loading job data…")
 def load_jobs() -> pd.DataFrame:
-    return pd.read_csv(shared.get_data_path("jobs.csv"))
+    return shared.load_supabase_table("dim_job")
 
 
-# ── Merge & Aggregation helpers (also cached) ─────────────────────────────────
+# Merge & Aggregation helpers (also cached)
 
 @st.cache_data(show_spinner="Merging & aggregating data…")
 def build_master(
@@ -127,7 +130,7 @@ def build_master(
 def payroll_trend(_pay: pd.DataFrame) -> pd.DataFrame:
     """Total gross pay aggregated per month."""
     date_col = next(
-        (c for c in ["pay_date", "payment_date", "pay_period", "payroll_period", "period", "date"] if c in _pay.columns),
+        (c for c in ["full_date", "pay_date", "payment_date", "pay_period", "payroll_period", "period", "date"] if c in _pay.columns),
         None,
     )
     if date_col is None:
@@ -154,7 +157,7 @@ def payroll_trend(_pay: pd.DataFrame) -> pd.DataFrame:
 def performance_trend(_perf: pd.DataFrame) -> pd.DataFrame:
     """Average performance score per month."""
     date_col = next(
-        (c for c in ["review_date", "performance_date", "period", "date"] if c in _perf.columns),
+        (c for c in ["full_date", "review_date", "performance_date", "period", "date"] if c in _perf.columns),
         None,
     )
     score_col = next(
@@ -174,14 +177,13 @@ def performance_trend(_perf: pd.DataFrame) -> pd.DataFrame:
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # LOAD DATA
-# ═══════════════════════════════════════════════════════════════════════════════
 
 try:
+    dates_df = load_dates()
     emp_df  = load_employees()
-    pay_df  = load_payroll()
-    perf_df = load_performance()
+    pay_df  = load_payroll(dates_df)
+    perf_df = load_performance(dates_df)
     dept_df = load_departments()
     jobs_df = load_jobs()
 
@@ -190,7 +192,7 @@ try:
     perf_trend_ = performance_trend(perf_df)
 
     data_loaded = True
-except FileNotFoundError as e:
+except Exception as e:
     data_loaded = False
     load_error  = str(e)
 
@@ -198,9 +200,7 @@ PLOTLY_LAYOUT = shared.get_plotly_theme()
 PALETTE = shared.get_palette()
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # SIDEBAR — Global Filters
-# ═══════════════════════════════════════════════════════════════════════════════
 
 with st.sidebar:
     shared.add_sidebar_header()
@@ -249,9 +249,7 @@ with st.sidebar:
     )
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # GUARD — Data Unavailable
-# ═══════════════════════════════════════════════════════════════════════════════
 
 if not data_loaded:
     st.error(
@@ -262,9 +260,7 @@ if not data_loaded:
     st.stop()
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # APPLY FILTERS
-# ═══════════════════════════════════════════════════════════════════════════════
 
 filtered_master = master_df.copy()
 filtered_pay    = pay_df.copy()
@@ -296,9 +292,7 @@ else:
     perf_trend_filtered = perf_trend_
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # COMPUTE KPIs
-# ═══════════════════════════════════════════════════════════════════════════════
 
 total_employees  = len(filtered_master)
 active_employees = (
@@ -333,9 +327,7 @@ high_perf = (filtered_master[score_col_master] >= 4.0).sum() if score_col_master
 low_perf  = (filtered_master[score_col_master] < 2.5).sum()  if score_col_master else 0
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # PAGE HEADER
-# ═══════════════════════════════════════════════════════════════════════════════
 
 st.markdown(
     """
@@ -382,9 +374,7 @@ if any(f != "All" for f in [sel_dept, sel_status, sel_year]):
 st.markdown('<hr>', unsafe_allow_html=True)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # KPI ROW
-# ═══════════════════════════════════════════════════════════════════════════════
 
 def fmt_currency(v: float) -> str:
     """Format large numbers as Rp X.X M / B."""
@@ -441,16 +431,14 @@ with col5:
 st.markdown("<br>", unsafe_allow_html=True)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # VISUALIZATION TABS
-# ═══════════════════════════════════════════════════════════════════════════════
 
 tab1, tab2, tab3, tab4 = st.tabs(
     ["📈 Payroll Trend", "⭐ Performance Trend", "🏢 By Department", "🔍 Distribution"]
 )
 
 
-# ─── TAB 1: Payroll Trend ──────────────────────────────────────────────────────
+# TAB 1: Payroll Trend
 with tab1:
     st.markdown(
         '<div class="section-header" style="font-size:1rem;font-weight:700;'
@@ -549,7 +537,7 @@ with tab1:
             )
 
 
-# ─── TAB 2: Performance Trend ──────────────────────────────────────────────────
+# TAB 2: Performance Trend
 with tab2:
     st.markdown(
         '<div style="font-size:1rem;font-weight:700;border-bottom:2px solid #7C3AED;'
@@ -650,7 +638,7 @@ with tab2:
                 )
 
 
-# ─── TAB 3: By Department ─────────────────────────────────────────────────────
+# TAB 3: By Department
 with tab3:
     st.markdown(
         '<div style="font-size:1rem;font-weight:700;border-bottom:2px solid #059669;'
@@ -770,7 +758,7 @@ with tab3:
         )
 
 
-# ─── TAB 4: Distribution ──────────────────────────────────────────────────────
+# TAB 4: Distribution
 with tab4:
     st.markdown(
         '<div style="font-size:1rem;font-weight:700;border-bottom:2px solid #D97706;'
@@ -869,9 +857,7 @@ with tab4:
         st.plotly_chart(fig_box, use_container_width=True)
 
 
-# ═══════════════════════════════════════════════════════════════════════════════
 # FOOTER
-# ═══════════════════════════════════════════════════════════════════════════════
 
 st.markdown("<br>", unsafe_allow_html=True)
 st.markdown(

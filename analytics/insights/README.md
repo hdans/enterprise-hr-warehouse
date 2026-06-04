@@ -1,1 +1,0 @@
-Narrative insights and findings.

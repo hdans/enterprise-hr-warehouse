@@ -1,1 +1,0 @@
-Staging DDL scripts.

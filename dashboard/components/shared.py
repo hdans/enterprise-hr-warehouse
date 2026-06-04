@@ -1,46 +1,83 @@
+import os
 import streamlit as st
 import pandas as pd
 from pathlib import Path
+from dotenv import load_dotenv
+from supabase import create_client, Client
 
-# ── Paths Configuration ───────────────────────────────────────────────────────
-ROOT_DIR = Path(__file__).resolve().parents[2]
-DATA_DIR = ROOT_DIR / "data" / "oltp"
+# Paths Configuration
+ROOT_DIR    = Path(__file__).resolve().parents[2]
+EXPORTS_DIR = ROOT_DIR / "data" / "exports"      # OLAP star-schema (preferred)
+DATA_DIR    = ROOT_DIR / "data" / "oltp"          # OLTP fallback
+
+# Supabase Configuration
+load_dotenv(ROOT_DIR / ".env")
+_SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
+_SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
+if _SUPABASE_URL and _SUPABASE_KEY:
+    supabase: Client = create_client(_SUPABASE_URL, _SUPABASE_KEY)
+else:
+    supabase = None
+
+@st.cache_data(show_spinner=False)
+def load_supabase_table(table_name: str) -> pd.DataFrame:
+    """Fetch all rows from a Supabase table."""
+    if not supabase:
+        raise Exception("Supabase credentials not configured in .env")
+    try:
+        # Fetch all rows from Supabase
+        response = supabase.table(table_name).select("*").execute()
+        return pd.DataFrame(response.data)
+    except Exception as e:
+        raise Exception(f"Failed to load {table_name} from Supabase: {e}")
 
 def get_data_path(filename: str) -> str:
     """
-    Dynamically searches for CSV data files under the data/oltp/master
-    or data/oltp/transactional directories, with workspace search fallback.
+    Dynamically searches for CSV data files, prioritising the OLAP
+    exports layer and falling back to OLTP when exports are unavailable.
+
+    Search order:
+      1. data/exports/           (OLAP warehouse exports — preferred)
+      2. data/oltp/master/       (OLTP master tables)
+      3. data/oltp/transactional/(OLTP transactional tables)
+      4. data/oltp/              (direct)
+      5. Recursive workspace search
     """
-    # 1. Check master folder
+    # 1. Check OLAP exports (star-schema data) — exact filename match only
+    export_path = EXPORTS_DIR / filename
+    if export_path.exists():
+        return str(export_path)
+
+    # 2. Check OLTP master folder
     master_path = DATA_DIR / "master" / filename
     if master_path.exists():
         return str(master_path)
-    
-    # 2. Check transactional folder
+
+    # 3. Check OLTP transactional folder
     trans_path = DATA_DIR / "transactional" / filename
     if trans_path.exists():
         return str(trans_path)
-    
-    # 3. Check directly in root data/oltp
+
+    # 4. Check directly in root data/oltp
     direct_path = DATA_DIR / filename
     if direct_path.exists():
         return str(direct_path)
-        
-    # 4. Recursive search in data/oltp
+
+    # 5. Recursive search in data/oltp
     if DATA_DIR.exists():
         matches = list(DATA_DIR.rglob(filename))
         if matches:
             return str(matches[0])
-            
-    # 5. Search in the entire workspace
+
+    # 6. Search in the entire workspace
     matches = list(ROOT_DIR.rglob(filename))
     if matches:
         return str(matches[0])
-        
-    raise FileNotFoundError(f"File '{filename}' not found in '{DATA_DIR}' or workspace.")
+
+    raise FileNotFoundError(f"File '{filename}' not found in '{EXPORTS_DIR}', '{DATA_DIR}', or workspace.")
 
 
-# ── CSS Theme Injection ───────────────────────────────────────────────────────
+# CSS Theme Injection
 def inject_custom_css():
     """
     Injects global CSS into the Streamlit application to unify designs.
@@ -287,7 +324,7 @@ def inject_custom_css():
     )
 
 
-# ── Sidebar Layout & Theme Switcher ───────────────────────────────────────────
+# Sidebar Layout & Theme Switcher
 def add_sidebar_header():
     """
     Renders sidebar header (title) and the Light/Dark mode switcher button.
@@ -330,7 +367,7 @@ def add_sidebar_header():
     st.markdown("---")
 
 
-# ── Plotly Responsive Layout Dict ─────────────────────────────────────────────
+# Plotly Responsive Layout Dict
 def get_plotly_theme() -> dict:
     """
     Returns the base Plotly layout dict, dynamically adapted to the active color mode.
@@ -353,7 +390,7 @@ def get_plotly_theme() -> dict:
     )
 
 
-# ── Colors Palette ────────────────────────────────────────────────────────────
+# Colors Palette
 def get_palette() -> list:
     """
     Consistent default color palette for all charts.

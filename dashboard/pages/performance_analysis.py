@@ -12,7 +12,7 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import numpy as np
 
-# ── Page Config ────────────────────────────────────────────────────────────────
+# Page Config
 st.set_page_config(
     page_title="Performance Analysis · HR Analytics",
     page_icon="📊",
@@ -21,10 +21,10 @@ st.set_page_config(
 
 import components.shared as shared
 
-# ── Custom CSS ────────────────────────────────────────────────────────────────
+# Custom CSS
 shared.inject_custom_css()
 
-# ── Plotly Theme Helper ────────────────────────────────────────────────────────
+# Plotly Theme Helper
 def plotly_theme() -> dict:
     return shared.get_plotly_theme()
 
@@ -33,13 +33,22 @@ PALETTE = [
     "#ef4444", "#06b6d4", "#f97316", "#ec4899",
 ]
 
-# ── Data Loaders (cached) ──────────────────────────────────────────────────────
+# Data Loaders (cached)
 
 @st.cache_data(show_spinner=False)
-def load_performance_logs() -> pd.DataFrame:
-    df = pd.read_csv(shared.get_data_path("performance_logs.csv"))
+def load_dates() -> pd.DataFrame:
+    df = shared.load_supabase_table("dim_date")
+    return df
+
+@st.cache_data(show_spinner=False)
+def load_performance_logs(dates_df: pd.DataFrame) -> pd.DataFrame:
+    df = shared.load_supabase_table("fact_employee_performance")
     df.columns = df.columns.str.strip().str.lower().str.replace(r"\s+", "_", regex=True)
-    for col in ["review_date", "date", "period_date", "log_date"]:
+    
+    if not dates_df.empty and "date_id" in df.columns:
+        df = df.merge(dates_df[["date_id", "full_date"]], on="date_id", how="left")
+        
+    for col in ["full_date", "review_date", "date", "period_date", "log_date"]:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], errors="coerce")
             df.rename(columns={col: "review_date"}, inplace=True)
@@ -48,13 +57,13 @@ def load_performance_logs() -> pd.DataFrame:
 
 @st.cache_data(show_spinner=False)
 def load_employees() -> pd.DataFrame:
-    df = pd.read_csv(shared.get_data_path("employees.csv"))
+    df = shared.load_supabase_table("dim_employee")
     df.columns = df.columns.str.strip().str.lower().str.replace(r"\s+", "_", regex=True)
     return df
 
 @st.cache_data(show_spinner=False)
 def load_departments() -> pd.DataFrame:
-    df = pd.read_csv(shared.get_data_path("departments.csv"))
+    df = shared.load_supabase_table("dim_department")
     df.columns = df.columns.str.strip().str.lower().str.replace(r"\s+", "_", regex=True)
     return df
 
@@ -100,7 +109,7 @@ def build_master(_perf: pd.DataFrame, _emp: pd.DataFrame, _dept: pd.DataFrame) -
     return df
 
 
-# ── Grade Helper ───────────────────────────────────────────────────────────────
+# Grade Helper
 def score_to_grade(score: float, max_score: float = 100.0) -> str:
     pct = score / max_score * 100
     if pct >= 90: return "Excellent"
@@ -117,17 +126,15 @@ GRADE_COLOR = {
     "Poor":          "#ef4444",
 }
 
-# ── Load Data ──────────────────────────────────────────────────────────────────
+# Load Data
 with st.spinner("Loading performance data…"):
     try:
-        raw_perf = load_performance_logs()
+        raw_dates = load_dates()
+        raw_perf = load_performance_logs(raw_dates)
         raw_emp  = load_employees()
         raw_dept = load_departments()
         df = build_master(raw_perf, raw_emp, raw_dept)
         data_ok = True
-    except FileNotFoundError as e:
-        st.error(f"❌ File not found: `{e.filename}`. Make sure `data/oltp/` contains all required CSV files.")
-        data_ok = False
     except Exception as e:
         st.error(f"❌ Error loading data: {e}")
         data_ok = False
@@ -135,7 +142,7 @@ with st.spinner("Loading performance data…"):
 if not data_ok:
     st.stop()
 
-# ── Page Header ────────────────────────────────────────────────────────────────
+# Page Header
 st.markdown("""
 <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1.5rem;">
     <span style="font-size:1.8rem;">📊</span>
@@ -151,7 +158,7 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ── Sidebar Filters ────────────────────────────────────────────────────────────
+# Sidebar Filters
 with st.sidebar:
     shared.add_sidebar_header()
     st.markdown("### 🎛️ Filters")
@@ -197,7 +204,7 @@ with st.sidebar:
     st.markdown("---")
     st.caption("💡 Filters apply to all charts on this page.")
 
-# ── Apply Filters ──────────────────────────────────────────────────────────────
+# Apply Filters
 fdf = df.copy()
 
 if selected_depts and "department_name" in fdf.columns:
@@ -215,7 +222,7 @@ if score_range and "performance_score" in fdf.columns:
         (fdf["performance_score"] <= score_range[1])
     ]
 
-# ── Validate Score Column ──────────────────────────────────────────────────────
+# Validate Score Column
 if "performance_score" not in fdf.columns:
     st.warning("⚠️ Performance score column not found. Ensure `performance_logs.csv` has a column named `score`, `performance_score`, or `rating`.")
     st.stop()
@@ -225,7 +232,7 @@ max_possible = fdf[score_col].max() if fdf[score_col].max() <= 10 else 100.0
 
 fdf["grade"] = fdf[score_col].apply(lambda x: score_to_grade(x, max_possible))
 
-# ── KPI Metrics ────────────────────────────────────────────────────────────────
+# KPI Metrics
 avg_score      = fdf[score_col].mean()
 median_score   = fdf[score_col].median()
 total_reviews  = len(fdf)
@@ -248,7 +255,7 @@ with col_k5:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# ── ROW 1 — Score Distribution + Grade Donut ──────────────────────────────────
+# ROW 1 — Score Distribution + Grade Donut
 col1, col2 = st.columns([3, 2], gap="medium")
 
 with col1:
@@ -317,7 +324,7 @@ with col2:
     st.plotly_chart(fig_donut, use_container_width=True, config={"displayModeBar": False})
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ── ROW 2 — Avg Score by Department ───────────────────────────────────────────
+# ROW 2 — Avg Score by Department
 if "department_name" in fdf.columns:
     st.markdown('<div class="chart-card">', unsafe_allow_html=True)
     st.markdown('<div class="chart-title">Average Performance Score by Department</div>', unsafe_allow_html=True)
@@ -371,7 +378,7 @@ if "department_name" in fdf.columns:
     st.plotly_chart(fig_dept, use_container_width=True, config={"displayModeBar": False})
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ── ROW 3 — Score Distribution by Department ─────────────────────────────────
+# ROW 3 — Score Distribution by Department
 if "department_name" in fdf.columns:
     st.markdown('<div class="chart-card">', unsafe_allow_html=True)
     st.markdown('<div class="chart-title">Score Distribution by Department</div>', unsafe_allow_html=True)
@@ -404,7 +411,7 @@ if "department_name" in fdf.columns:
     st.plotly_chart(fig_box, use_container_width=True, config={"displayModeBar": False})
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ── ROW 4 — Grade Heatmap by Dept ─────────────────────────────────────────────
+# ROW 4 — Grade Heatmap by Dept
 if "department_name" in fdf.columns:
     st.markdown('<div class="chart-card">', unsafe_allow_html=True)
     st.markdown('<div class="chart-title">Grade Heatmap by Department</div>', unsafe_allow_html=True)
@@ -435,7 +442,7 @@ if "department_name" in fdf.columns:
     st.plotly_chart(fig_heat, use_container_width=True, config={"displayModeBar": False})
     st.markdown('</div>', unsafe_allow_html=True)
 
-# ── ROW 5 — Raw Data Preview ───────────────────────────────────────────────────
+# ROW 5 — Raw Data Preview
 with st.expander("🗂️ Raw Data Preview (after filters)", expanded=False):
     preview_cols = [c for c in [
         "employee_id", "employee_name", "department_name",
@@ -451,7 +458,7 @@ with st.expander("🗂️ Raw Data Preview (after filters)", expanded=False):
     )
     st.caption(f"Showing first 500 rows of {len(fdf):,} rows matching current filters.")
 
-# ── Footer ─────────────────────────────────────────────────────────────────────
+# Footer
 st.markdown("""
 <div style="text-align:center; padding: 2rem 0 1rem; opacity: .35; font-size: .78rem;">
     HR Analytics Dashboard &nbsp;·&nbsp; Performance Analysis
