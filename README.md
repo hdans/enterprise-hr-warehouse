@@ -12,6 +12,9 @@ python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
 python synthetic_data/generate_all.py
+python etl/transform/raw_to_oltp.py
+python etl/transform/oltp_to_staging.py
+python etl/transform/staging_to_warehouse.py
 ```
 
 ## Output
@@ -25,6 +28,11 @@ python synthetic_data/generate_all.py
 - OLTP layer:
   - `data/oltp/master/*.csv`
   - `data/oltp/transactional/*.csv`
+- Staging layer:
+  - `data/staging/stg_*.csv`
+- Data Warehouse layer:
+  - `data/warehouse/dim_*.csv`
+  - `data/warehouse/fact_*.csv`
 
 ## Notes
 
