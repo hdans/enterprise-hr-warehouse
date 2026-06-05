@@ -9,11 +9,11 @@ def load_oltp_to_supabase():
     root_dir = Path(__file__).resolve().parents[2]
     load_dotenv(root_dir / '.env')
     
-    url = os.environ.get("SUPABASE_URL")
-    key = os.environ.get("SUPABASE_KEY")
+    url = os.environ.get("OLTP_SUPABASE_URL")
+    key = os.environ.get("OLTP_SUPABASE_KEY")
     
     if not url or not key:
-        print("[-] SUPABASE_URL or SUPABASE_KEY not found in environment variables.")
+        print("[-] OLTP_SUPABASE_URL or OLTP_SUPABASE_KEY not found in environment variables.")
         return
     
     try:
