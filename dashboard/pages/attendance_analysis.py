@@ -25,7 +25,7 @@ import components.shared as shared
 # Page Configuration
 st.set_page_config(
     page_title="Attendance Analysis · HR Analytics",
-    page_icon="🕐",
+    page_icon=":material/schedule:",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -262,7 +262,7 @@ try:
     data_ok  = True
 except Exception as e:
     data_ok = False
-    load_err = str(e)
+    load_error = e
 
 # Dynamic Column Detection
 if data_ok:
@@ -284,7 +284,8 @@ with st.sidebar:
 
     st.markdown(
         "<div style='font-size:.7rem;font-weight:700;letter-spacing:.1em;"
-        "text-transform:uppercase;color:#64748B;padding:0 .5rem .5rem;'>📅 Time Range</div>",
+        f"text-transform:uppercase;color:#64748B;padding:0 .5rem .5rem;'>"
+        f"{shared.icon_label('calendar', 'Time Range', color='#94A3B8', size=14)}</div>",
         unsafe_allow_html=True,
     )
 
@@ -341,7 +342,8 @@ with st.sidebar:
     st.markdown("---")
     st.markdown(
         "<div style='font-size:.7rem;font-weight:700;letter-spacing:.1em;"
-        "text-transform:uppercase;color:#64748B;padding:0 .5rem .5rem;'>🔍 Additional Filters</div>",
+        f"text-transform:uppercase;color:#64748B;padding:0 .5rem .5rem;'>"
+        f"{shared.icon_label('filter', 'Additional Filters', color='#94A3B8', size=14)}</div>",
         unsafe_allow_html=True,
     )
 
@@ -349,11 +351,11 @@ with st.sidebar:
         dept_opts = ["All"]
         if DEPT_COL:
             dept_opts += sorted(att_full[DEPT_COL].dropna().unique().tolist())
-        sel_dept = st.selectbox("🏢 Department", dept_opts)
+        sel_dept = st.selectbox("Department", dept_opts)
 
         if HAS_STATUS:
             status_opts = ["All"] + sorted(att_full["status"].dropna().unique().tolist())
-            sel_status = st.selectbox("📋 Attendance Status", status_opts)
+            sel_status = st.selectbox("Attendance Status", status_opts)
         else:
             sel_status = "All"
 
@@ -362,7 +364,7 @@ with st.sidebar:
     st.markdown("---")
     st.markdown(
         "<div style='font-size:.7rem;color:#64748B;padding:.5rem;line-height:1.5;'>"
-        "📄 Synthetic data · Not production data</div>",
+        f"{shared.icon_label('database', 'Synthetic data · Not production data', color='#94A3B8', size=14)}</div>",
         unsafe_allow_html=True,
     )
 
@@ -370,10 +372,7 @@ with st.sidebar:
 # GUARD
 
 if not data_ok:
-    st.error(
-        f"❌ **File not found**: `{load_error}`\n\n"
-        "Make sure the 'data/oltp/' directory contains 'attendance_logs.csv' and 'employees.csv'."
-    )
+    shared.render_data_load_error(load_error)
     st.stop()
 
 
@@ -422,10 +421,10 @@ avg_hours = df["work_hours"].mean() if HAS_HOURS else 0.0
 # PAGE HEADER
 
 st.markdown(
-    """
+    f"""
     <div style="margin-bottom:1.5rem;">
         <div style="display:flex;align-items:center;gap:.75rem;">
-            <span style="font-size:1.8rem;">🕐</span>
+            <span style="display:inline-flex;color:#059669;">{shared.icon_svg("clock", size=30, color="#059669")}</span>
             <div>
                 <h1 style="margin:0;font-size:1.8rem;font-weight:800;
                            background:linear-gradient(135deg,#059669,#2563EB);
@@ -449,18 +448,18 @@ date_label = (
     if HAS_DATE else "All Data"
 )
 badges_info = [
-    ("📅", date_label),
-    ("📊", f"{total_records:,} logs"),
-    ("👥", f"{unique_emp:,} employees"),
-    ("📆", f"{working_days:,} workdays"),
+    ("calendar", date_label),
+    ("bar-chart", f"{total_records:,} logs"),
+    ("users", f"{unique_emp:,} employees"),
+    ("calendar", f"{working_days:,} workdays"),
 ]
 if sel_dept != "All":
-    badges_info.append(("🏢", sel_dept))
+    badges_info.append(("building", sel_dept))
 
 badge_html = " &nbsp; ".join(
     f'<span style="background:rgba(5,150,105,.1);color:#065F46;'
     f'padding:.2rem .65rem;border-radius:20px;font-size:.78rem;font-weight:600;">'
-    f'{icon} {label}</span>'
+    f'{shared.icon_label(icon, label, color="#065F46", size=14)}</span>'
     for icon, label in badges_info
 )
 st.markdown(f'<div style="margin-bottom:1.25rem;">{badge_html}</div>', unsafe_allow_html=True)
@@ -472,26 +471,26 @@ st.markdown('<hr>', unsafe_allow_html=True)
 k1, k2, k3, k4, k5, k6 = st.columns(6)
 
 with k1:
-    st.metric("🟢 Attendance Rate", f"{att_rate:.1f}%",
-              delta="✓ Good" if att_rate >= 90 else "⚠ Needs Attention",
+    st.metric("Attendance Rate", f"{att_rate:.1f}%",
+              delta="Good" if att_rate >= 90 else "Needs Attention",
               delta_color="normal" if att_rate >= 90 else "inverse")
 with k2:
-    st.metric("🟠 Incomplete / Early Leave", f"{incomplete_rate:.1f}%",
-              delta="⚠ High" if incomplete_rate > 20 else "✓ Normal",
+    st.metric("Incomplete / Early Leave", f"{incomplete_rate:.1f}%",
+              delta="High" if incomplete_rate > 20 else "Normal",
               delta_color="inverse" if incomplete_rate > 20 else "normal")
 with k3:
-    st.metric("🟡 Late Rate", f"{late_rate:.1f}%",
-              delta="⚠ High" if late_rate > 10 else "✓ Normal",
+    st.metric("Late Rate", f"{late_rate:.1f}%",
+              delta="High" if late_rate > 10 else "Normal",
               delta_color="inverse" if late_rate > 10 else "normal")
 with k4:
-    st.metric("👥 Active Employees", f"{unique_emp:,}",
+    st.metric("Active Employees", f"{unique_emp:,}",
               delta=f"{working_days:,} workdays", delta_color="off")
 with k5:
-    st.metric("📋 Total Logs", f"{total_records:,}",
+    st.metric("Total Logs", f"{total_records:,}",
               delta=f"Average {total_records//max(working_days,1):,}/day" if working_days else "—",
               delta_color="off")
 with k6:
-    st.metric("🟣 Early Leave", f"{n_early_leave:,}",
+    st.metric("Early Leave", f"{n_early_leave:,}",
               delta=f"{early_leave_rate:.1f}% of total" if total_records else "—",
               delta_color="off")
 
@@ -527,10 +526,10 @@ if HAS_STATUS and total_records > 0:
 # TABS
 
 tab1, tab2, tab3, tab4 = st.tabs([
-    "📈 Monthly Trend",
-    "📅 Daily Pattern",
-    "🏢 By Department",
-    "⚠️ Lateness & Incomplete Logs",
+    "Monthly Trend",
+    "Daily Pattern",
+    "By Department",
+    "Lateness & Incomplete Logs",
 ])
 
 
@@ -668,7 +667,7 @@ with tab1:
         st.plotly_chart(fig_rate, use_container_width=True)
 
         # Monthly Summary Table
-        with st.expander("📋 View monthly data table", expanded=False):
+        with st.expander("View monthly data table", expanded=False):
             show_monthly = monthly.copy()
             show_monthly["month_ts"] = show_monthly["month_ts"].dt.strftime("%b %Y")
             show_monthly.rename(columns={
@@ -963,7 +962,7 @@ with tab4:
     # Late distribution
     st.markdown(
         '<div style="font-size:.9rem;font-weight:700;margin-bottom:.6rem;">'
-        '🟡 Late Distribution & Trend</div>',
+        f'{shared.icon_label("clock", "Late Distribution & Trend", color=C_LATE, size=16)}</div>',
         unsafe_allow_html=True,
     )
 
@@ -1085,7 +1084,7 @@ with tab4:
     st.markdown("<br><hr><br>", unsafe_allow_html=True)
     st.markdown(
         '<div style="font-size:.9rem;font-weight:700;margin-bottom:.6rem;">'
-        '🟠 Top Employees with Incomplete Logs</div>',
+        f'{shared.icon_label("alert", "Top Employees with Incomplete Logs", color=C_INCOMPLETE, size=16)}</div>',
         unsafe_allow_html=True,
     )
     inc_employees = worst_incomplete_logs(df, top_n=10)
@@ -1126,7 +1125,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 st.markdown(
     '<div style="text-align:center;padding:1.5rem 0;'
     'font-size:.75rem;color:var(--text-muted);">'
-    '🕐 Attendance Analysis · HR Analytics Dashboard &nbsp;·&nbsp; '
+    'Attendance Analysis · HR Analytics Dashboard &nbsp;·&nbsp; '
     'Data is synthetic for demonstration purposes</div>',
     unsafe_allow_html=True,
 )

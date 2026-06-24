@@ -1,4 +1,5 @@
 import os
+import socket
 import streamlit as st
 import pandas as pd
 from pathlib import Path
@@ -14,8 +15,84 @@ DATA_DIR    = ROOT_DIR / "data" / "oltp"          # OLTP fallback
 load_dotenv(ROOT_DIR / ".env")
 _SUPABASE_URL = os.environ.get("SUPABASE_URL", "")
 _SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
+_supabase_init_error = None
+
+
+class DataLoadError(Exception):
+    """Raised when dashboard data cannot be loaded from the configured source."""
+
+
+_ICON_PATHS = {
+    "alert": '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+    "bar-chart": '<path d="M3 3v18h18"/><path d="M7 15v2"/><path d="M12 9v8"/><path d="M17 5v12"/>',
+    "briefcase": '<path d="M10 6V5a2 2 0 0 1 2-2h0a2 2 0 0 1 2 2v1"/><path d="M3 7h18v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M3 13h18"/><path d="M10 13v2h4v-2"/>',
+    "building": '<path d="M3 21h18"/><path d="M5 21V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16"/><path d="M9 7h1"/><path d="M14 7h1"/><path d="M9 11h1"/><path d="M14 11h1"/><path d="M9 15h1"/><path d="M14 15h1"/>',
+    "calendar": '<path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M3 10h18"/>',
+    "check": '<path d="m20 6-11 11-5-5"/>',
+    "clock": '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    "database": '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/>',
+    "filter": '<path d="M22 3H2l8 9.46V19l4 2v-8.54Z"/>',
+    "gauge": '<path d="M12 14l4-4"/><path d="M4.93 19a10 10 0 1 1 14.14 0"/>',
+    "info": '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/>',
+    "layout": '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/>',
+    "list": '<path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/>',
+    "moon": '<path d="M12 3a6 6 0 0 0 9 7.5A9 9 0 1 1 12 3Z"/>',
+    "package": '<path d="m21 8-9-5-9 5 9 5 9-5Z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
+    "pie-chart": '<path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10Z"/>',
+    "search": '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>',
+    "settings": '<path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z"/><path d="M19.43 12.98c.04-.32.07-.65.07-.98s-.02-.66-.07-.98l2.11-1.65-2-3.46-2.49 1a7.8 7.8 0 0 0-1.69-.98L15 3h-4l-.36 2.93c-.6.23-1.16.55-1.69.98l-2.49-1-2 3.46 2.11 1.65a7.93 7.93 0 0 0 0 1.96l-2.11 1.65 2 3.46 2.49-1c.53.43 1.09.75 1.69.98L11 21h4l.36-2.93c.6-.23 1.16-.55 1.69-.98l2.49 1 2-3.46-2.11-1.65Z"/>',
+    "star": '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>',
+    "sun": '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+    "table": '<path d="M3 5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M3 10h18"/><path d="M10 3v18"/>',
+    "trending-down": '<path d="m22 17-8.5-8.5-5 5L2 7"/><path d="M16 17h6v-6"/>',
+    "trending-up": '<path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/>',
+    "users": '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+    "wallet": '<path d="M19 7V6a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5"/><path d="M3 7h16a2 2 0 0 1 2 2v4h-5a2 2 0 0 1 0-4h5"/>',
+}
+
+
+def icon_svg(name: str, size: int = 20, color: str = "currentColor", stroke_width: float = 2) -> str:
+    """Return an inline SVG icon using a compact Lucide-style stroke system."""
+    path = _ICON_PATHS.get(name, _ICON_PATHS["info"])
+    return (
+        f'<svg class="ui-icon ui-icon-{name}" xmlns="http://www.w3.org/2000/svg" '
+        f'width="{size}" height="{size}" viewBox="0 0 24 24" fill="none" '
+        f'stroke="{color}" stroke-width="{stroke_width}" stroke-linecap="round" '
+        f'stroke-linejoin="round" aria-hidden="true">{path}</svg>'
+    )
+
+
+def icon_label(icon_name: str, label: str, color: str = "currentColor", size: int = 16) -> str:
+    """Return HTML for an inline icon plus text label."""
+    return (
+        f'<span class="icon-label" style="display:inline-flex;align-items:center;gap:.35rem;">'
+        f'{icon_svg(icon_name, size=size, color=color)}<span>{label}</span></span>'
+    )
+
+
+def _mask_secret(value: str, visible: int = 4) -> str:
+    if not value:
+        return "not set"
+    if len(value) <= visible * 2:
+        return "*" * len(value)
+    return f"{value[:visible]}...{value[-visible:]}"
+
+
+def _supabase_host() -> str:
+    try:
+        from urllib.parse import urlparse
+
+        return urlparse(_SUPABASE_URL).hostname or ""
+    except Exception:
+        return ""
+
+
 if _SUPABASE_URL and _SUPABASE_KEY:
-    supabase: Client = create_client(_SUPABASE_URL, _SUPABASE_KEY)
+    try:
+        supabase: Client = create_client(_SUPABASE_URL, _SUPABASE_KEY)
+    except Exception as e:
+        supabase = None
+        _supabase_init_error = str(e)
 else:
     supabase = None
 
@@ -23,13 +100,70 @@ else:
 def load_supabase_table(table_name: str) -> pd.DataFrame:
     """Fetch all rows from a Supabase table."""
     if not supabase:
-        raise Exception("Supabase credentials not configured in .env")
+        if _supabase_init_error:
+            raise DataLoadError(f"Supabase client could not be initialized: {_supabase_init_error}")
+        raise DataLoadError("Supabase credentials are not configured in .env")
     try:
-        # Fetch all rows from Supabase
         response = supabase.table(table_name).select("*").execute()
         return pd.DataFrame(response.data)
     except Exception as e:
-        raise Exception(f"Failed to load {table_name} from Supabase: {e}")
+        raise DataLoadError(f"Failed to load {table_name} from Supabase: {e}") from e
+
+
+def get_supabase_diagnostics() -> dict:
+    """Return non-sensitive Supabase configuration diagnostics for UI/debugging."""
+    host = _supabase_host()
+    dns_ok = None
+    dns_error = None
+    if host:
+        try:
+            socket.getaddrinfo(host, 443)
+            dns_ok = True
+        except Exception as e:
+            dns_ok = False
+            dns_error = str(e)
+
+    return {
+        "url_set": bool(_SUPABASE_URL),
+        "key_set": bool(_SUPABASE_KEY),
+        "url": _SUPABASE_URL or "not set",
+        "host": host or "not detected",
+        "key_preview": _mask_secret(_SUPABASE_KEY),
+        "client_ready": supabase is not None,
+        "client_init_error": _supabase_init_error,
+        "dns_ok": dns_ok,
+        "dns_error": dns_error,
+    }
+
+
+def render_data_load_error(error: object):
+    """Show a clear, non-crashing data-source error message in Streamlit."""
+    message = str(error)
+    diag = get_supabase_diagnostics()
+
+    st.error(
+        "**Data could not be loaded from Supabase.**\n\n"
+        f"`{message}`"
+    )
+
+    with st.expander("Connection diagnostics", expanded=True):
+        st.write(f"Supabase URL configured: `{diag['url_set']}`")
+        st.write(f"Supabase key configured: `{diag['key_set']}`")
+        st.write(f"Supabase URL: `{diag['url']}`")
+        st.write(f"Supabase host: `{diag['host']}`")
+        st.write(f"Supabase key preview: `{diag['key_preview']}`")
+        st.write(f"Supabase client ready: `{diag['client_ready']}`")
+        if diag["client_init_error"]:
+            st.write(f"Client initialization error: `{diag['client_init_error']}`")
+        if diag["dns_ok"] is not None:
+            st.write(f"DNS lookup works: `{diag['dns_ok']}`")
+        if diag["dns_error"]:
+            st.write(f"DNS error: `{diag['dns_error']}`")
+
+    st.info(
+        "Check `.env`, internet/VPN/proxy/DNS access, and the Supabase project URL. "
+        "The dashboard page is still open, but charts are hidden until data can be loaded."
+    )
 
 def get_data_path(filename: str) -> str:
     """
@@ -332,9 +466,11 @@ def add_sidebar_header():
     """
     # Header Logo/Title
     st.markdown(
-        """
+        f"""
         <div style="padding: 1rem 0 1.5rem; text-align: center; border-bottom: 1px solid #334155; margin-bottom: 1rem;">
-            <div style="font-size: 2.2rem; margin-bottom: .3rem;">👥</div>
+            <div style="display:flex;justify-content:center;margin-bottom:.55rem;">
+                {icon_svg("users", size=34, color="#93C5FD")}
+            </div>
             <div style="font-size: 1.1rem; font-weight: 700; color: #F1F5F9; letter-spacing: .02em;">
                 HR Analytics
             </div>
@@ -351,7 +487,7 @@ def add_sidebar_header():
         st.session_state["theme"] = "light"
         
     theme = st.session_state["theme"]
-    btn_emoji = "🌙" if theme == "light" else "☀️"
+    btn_icon = "moon" if theme == "light" else "sun"
     btn_label = "Dark Mode" if theme == "light" else "Light Mode"
     
     st.markdown(
@@ -360,7 +496,7 @@ def add_sidebar_header():
         unsafe_allow_html=True,
     )
     
-    if st.button(f"{btn_emoji} Switch to {btn_label}", key="toggle_theme_btn"):
+    if st.button(f"Switch to {btn_label}", key="toggle_theme_btn"):
         st.session_state["theme"] = "dark" if theme == "light" else "light"
         st.rerun()
         

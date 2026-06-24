@@ -11,7 +11,7 @@ import components.shared as shared
 # Page Configuration
 st.set_page_config(
     page_title="HR Analytics Dashboard",
-    page_icon="👥",
+    page_icon=":material/groups:",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -35,9 +35,11 @@ with st.sidebar:
 
 # Landing Page
 st.markdown(
-    """
+    f"""
     <div style="text-align: center; padding: 4rem 2rem 2rem;">
-        <div style="font-size: 3.5rem; margin-bottom: 1rem;">📊</div>
+        <div style="display:flex;justify-content:center;margin-bottom:1rem;color:#2563EB;">
+            {shared.icon_svg("bar-chart", size=54, color="#2563EB")}
+        </div>
         <h1 style="font-size: 2.4rem; font-weight: 700; margin-bottom: .5rem;
                    background: linear-gradient(135deg, #2563EB, #7C3AED);
                    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
@@ -55,35 +57,35 @@ st.markdown(
 # Quick-Nav Cards
 pages = [
     {
-        "icon": "🏢",
+        "icon": "building",
         "title": "Executive Summary",
         "desc": "Top-level metrics: total headcount, performance scores, and payroll spend.",
         "color": "#2563EB",
         "path": "pages/executive_summary.py",
     },
     {
-        "icon": "👤",
+        "icon": "users",
         "title": "Workforce Analysis",
         "desc": "Demographics, department distribution, job roles, and turnover.",
         "color": "#7C3AED",
         "path": "pages/workforce_analysis.py",
     },
     {
-        "icon": "🕐",
+        "icon": "clock",
         "title": "Attendance Analysis",
         "desc": "Attendance rates, lateness, absenteeism, and time-series trends.",
         "color": "#059669",
         "path": "pages/attendance_analysis.py",
     },
     {
-        "icon": "⭐",
+        "icon": "star",
         "title": "Performance Analysis",
         "desc": "Performance scores, rating distributions, and trends by period.",
         "color": "#D97706",
         "path": "pages/performance_analysis.py",
     },
     {
-        "icon": "💰",
+        "icon": "wallet",
         "title": "Payroll Analysis",
         "desc": "Payroll trends, salary distributions, and spend by department.",
         "color": "#DC2626",
@@ -106,7 +108,9 @@ for i, page in enumerate(pages):
                 border-top: 3px solid {page['color']};
                 transition: box-shadow .2s, transform .2s;
             ">
-                <div style="font-size: 1.8rem; margin-bottom: .6rem;">{page['icon']}</div>
+                <div style="margin-bottom:.7rem;color:{page['color']};">
+                    {shared.icon_svg(page['icon'], size=30, color=page['color'])}
+                </div>
                 <div style="font-size: 1rem; font-weight: 700;
                             color: var(--text-primary); margin-bottom: .3rem;">
                     {page['title']}

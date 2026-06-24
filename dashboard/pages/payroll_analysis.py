@@ -15,7 +15,7 @@ import numpy as np
 # Page Config
 st.set_page_config(
     page_title="Payroll Analysis · HR Analytics",
-    page_icon="💰",
+    page_icon=":material/payments:",
     layout="wide",
 )
 
@@ -126,20 +126,21 @@ with st.spinner("Loading payroll data…"):
         df = build_master(raw_pay, raw_emp, raw_dept)
         data_ok = True
     except Exception as e:
-        st.error(f"❌ Error loading data: {e}")
+        load_error = e
         data_ok = False
 
 if not data_ok:
+    shared.render_data_load_error(load_error)
     st.stop()
 
 if "salary_amount" not in df.columns:
-    st.warning("⚠️ Salary amount column not found. Ensure `payroll_transactions.csv` has a column named `salary`, `amount`, `net_salary`, or `gross_salary`.")
+    st.warning("Salary amount column not found. Ensure `payroll_transactions.csv` has a column named `salary`, `amount`, `net_salary`, or `gross_salary`.")
     st.stop()
 
 # Page Header
 st.markdown("""
 <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1.5rem;">
-    <span style="font-size:1.8rem;">💰</span>
+    <span style="display:inline-flex;color:#DC2626;">""" + shared.icon_svg("wallet", size=30, color="#DC2626") + """</span>
     <div>
         <h1 style="margin:0;font-size:1.8rem;font-weight:800;
                    background:linear-gradient(135deg,#059669,#2563EB);
@@ -155,7 +156,7 @@ st.markdown("""
 # Sidebar Filters
 with st.sidebar:
     shared.add_sidebar_header()
-    st.markdown("### 🎛️ Filters")
+    st.markdown("### Filters")
 
     if "department_name" in df.columns:
         all_depts = sorted(df["department_name"].dropna().unique().tolist())
@@ -177,7 +178,7 @@ with st.sidebar:
         ["basic","allowance","bonus","overtime","deduction","tax","bpjs","insurance","tunjangan","potongan"])]
 
     st.markdown("---")
-    st.caption("💡 Filters apply to all visualizations on this page.")
+    st.caption("Filters apply to all visualizations on this page.")
 
 # Apply Filters
 fdf = df.copy()
@@ -226,21 +227,21 @@ def delta_html(val):
 
 col_k1, col_k2, col_k3, col_k4 = st.columns(4)
 with col_k1:
-    st.metric("💸 Total Payroll Spend", fmt_currency(total_all, short=True), "entire period after filters")
+    st.metric("Total Payroll Spend", fmt_currency(total_all, short=True), "entire period after filters")
 with col_k2:
-    label = f"📅 {str(latest_month) if has_date else 'Latest'} Payroll"
+    label = f"{str(latest_month) if has_date else 'Latest'} Payroll"
     st.metric(label, fmt_currency(total_this_month, short=True),
               f"{'+' if mom_delta and mom_delta >= 0 else ''}{mom_delta:.1f}% vs last month" if mom_delta else "no prior month")
 with col_k3:
-    st.metric("👥 Avg per Employee", fmt_currency(avg_per_emp, short=True), "total ÷ unique employees")
+    st.metric("Avg per Employee", fmt_currency(avg_per_emp, short=True), "total ÷ unique employees")
 with col_k4:
-    st.metric("🧾 Total Transactions", f"{n_transactions:,}", "payroll entries after filters")
+    st.metric("Total Transactions", f"{n_transactions:,}", "payroll entries after filters")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
 # ROW 1 — Payroll Spend Trend (Area)
 st.markdown('<div class="chart-card">', unsafe_allow_html=True)
-st.markdown('<div class="chart-title">📈 Payroll Spend Over Time</div>', unsafe_allow_html=True)
+st.markdown(f'<div class="chart-title">{shared.icon_label("trending-up", "Payroll Spend Over Time", color="#14b8a6", size=16)}</div>', unsafe_allow_html=True)
 st.markdown('<div class="chart-sub">Total salary paid per period — use the granularity filter in the sidebar</div>', unsafe_allow_html=True)
 
 if has_date:
@@ -295,7 +296,7 @@ col1, col2 = st.columns([3, 2], gap="medium")
 
 with col1:
     st.markdown('<div class="chart-card">', unsafe_allow_html=True)
-    st.markdown('<div class="chart-title">🏢 Payroll Allocation by Department</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="chart-title">{shared.icon_label("building", "Payroll Allocation by Department", color="#14b8a6", size=16)}</div>', unsafe_allow_html=True)
     st.markdown('<div class="chart-sub">Compare total spend and average salary per department</div>', unsafe_allow_html=True)
 
     if "department_name" in fdf.columns:
@@ -350,7 +351,7 @@ with col1:
 
 with col2:
     st.markdown('<div class="chart-card">', unsafe_allow_html=True)
-    st.markdown('<div class="chart-title">📊 Budget Share by Department</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="chart-title">{shared.icon_label("pie-chart", "Budget Share by Department", color="#14b8a6", size=16)}</div>', unsafe_allow_html=True)
     st.markdown('<div class="chart-sub">Each department\'s contribution to total payroll</div>', unsafe_allow_html=True)
 
     if "department_name" in fdf.columns:
@@ -388,7 +389,7 @@ col3, col4 = st.columns([2, 3], gap="medium")
 
 with col3:
     st.markdown('<div class="chart-card">', unsafe_allow_html=True)
-    st.markdown('<div class="chart-title">🧩 Salary Component Composition</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="chart-title">{shared.icon_label("layout", "Salary Component Composition", color="#14b8a6", size=16)}</div>', unsafe_allow_html=True)
     st.markdown('<div class="chart-sub">Breakdown of components within total payroll</div>', unsafe_allow_html=True)
 
     if component_cols:
@@ -439,7 +440,7 @@ with col3:
 
 with col4:
     st.markdown('<div class="chart-card">', unsafe_allow_html=True)
-    st.markdown('<div class="chart-title">📉 Salary Amount Distribution per Transaction</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="chart-title">{shared.icon_label("trending-down", "Salary Amount Distribution per Transaction", color="#14b8a6", size=16)}</div>', unsafe_allow_html=True)
     st.markdown('<div class="chart-sub">Individual salary value spread — histogram + KDE</div>', unsafe_allow_html=True)
 
     fig_hist = go.Figure()
@@ -486,7 +487,7 @@ with col4:
 # ROW 4 — Monthly Heatmap per Department
 if has_date and "department_name" in fdf.columns:
     st.markdown('<div class="chart-card">', unsafe_allow_html=True)
-    st.markdown('<div class="chart-title">🗓️ Monthly Payroll Heatmap by Department</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="chart-title">{shared.icon_label("calendar", "Monthly Payroll Heatmap by Department", color="#14b8a6", size=16)}</div>', unsafe_allow_html=True)
     st.markdown('<div class="chart-sub">Color intensity shows spend magnitude — spot seasonal patterns or anomalies</div>', unsafe_allow_html=True)
 
     heat_df = (fdf.groupby(["year_month", "department_name"])["salary_amount"]
@@ -511,7 +512,7 @@ if has_date and "department_name" in fdf.columns:
 # ROW 5 — Salary Distribution Box Plot
 if "department_name" in fdf.columns:
     st.markdown('<div class="chart-card">', unsafe_allow_html=True)
-    st.markdown('<div class="chart-title">📦 Salary Distribution by Department</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="chart-title">{shared.icon_label("package", "Salary Distribution by Department", color="#14b8a6", size=16)}</div>', unsafe_allow_html=True)
     st.markdown('<div class="chart-sub">Box plot — compare median, IQR, and outliers across departments</div>', unsafe_allow_html=True)
 
     dept_order = (fdf.groupby("department_name")["salary_amount"]
@@ -536,7 +537,7 @@ if "department_name" in fdf.columns:
 # ROW 6 — Department Summary Table
 if "department_name" in fdf.columns:
     st.markdown('<div class="chart-card">', unsafe_allow_html=True)
-    st.markdown('<div class="chart-title">📋 Payroll Summary by Department</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="chart-title">{shared.icon_label("table", "Payroll Summary by Department", color="#14b8a6", size=16)}</div>', unsafe_allow_html=True)
     st.markdown('<div class="chart-sub">Aggregate table for the selected period</div>', unsafe_allow_html=True)
 
     summary_df = (
@@ -569,7 +570,7 @@ if "department_name" in fdf.columns:
     st.markdown('</div>', unsafe_allow_html=True)
 
 # Raw Data Preview
-with st.expander("🗂️ Raw Data Preview (after filters)", expanded=False):
+with st.expander("Raw Data Preview (after filters)", expanded=False):
     preview_cols = [c for c in [
         "employee_id", "employee_name", "department_name",
         "salary_amount", "pay_date",

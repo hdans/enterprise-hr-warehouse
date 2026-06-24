@@ -20,7 +20,7 @@ from datetime import date
 # Page Configuration
 st.set_page_config(
     page_title="Workforce Analysis · HR Analytics",
-    page_icon="👤",
+    page_icon=":material/groups:",
     layout="wide",
 )
 
@@ -135,7 +135,7 @@ try:
     data_ok  = True
 except Exception as e:
     data_ok    = False
-    load_error = str(e)
+    load_error = e
 
 
 # DETECT DYNAMIC COLUMNS
@@ -167,26 +167,26 @@ with st.sidebar:
         dept_opts = ["All"]
         if DEPT_COL:
             dept_opts += sorted(wf[DEPT_COL].dropna().unique().tolist())
-        sel_dept = st.selectbox("🏢 Department", dept_opts)
+        sel_dept = st.selectbox("Department", dept_opts)
 
         # Gender Filter
         gender_opts = ["All"]
         if GENDER_COL:
             gender_opts += sorted(wf[GENDER_COL].dropna().unique().tolist())
-        sel_gender = st.selectbox("⚧ Gender", gender_opts)
+        sel_gender = st.selectbox("Gender", gender_opts)
 
         # Status Filter
         status_opts = ["All"]
         if STATUS_COL:
             status_opts += sorted(wf[STATUS_COL].dropna().unique().tolist())
-        sel_status = st.selectbox("🟢 Status", status_opts)
+        sel_status = st.selectbox("Status", status_opts)
 
         # Hire Year Filter
         hire_years = ["All"]
         if "hire_date" in wf.columns:
             years = sorted(wf["hire_date"].dt.year.dropna().unique().astype(int), reverse=True)
             hire_years += [str(y) for y in years]
-        sel_year = st.selectbox("📅 Hire Year", hire_years)
+        sel_year = st.selectbox("Hire Year", hire_years)
 
         st.markdown("---")
 
@@ -202,7 +202,7 @@ with st.sidebar:
     st.markdown("---")
     st.markdown(
         "<div style='font-size:.7rem;color:#64748B;padding:.5rem;line-height:1.5;'>"
-        "📄 Synthetic data · Not production data</div>",
+        f"{shared.icon_label('database', 'Synthetic data · Not production data', color='#94A3B8', size=14)}</div>",
         unsafe_allow_html=True,
     )
 
@@ -210,10 +210,7 @@ with st.sidebar:
 # GUARD
 
 if not data_ok:
-    st.error(
-        f"❌ **File not found**: `{load_error}`\n\n"
-        "Make sure the 'data/oltp/' directory contains 'employees.csv', 'departments.csv', and 'jobs.csv'."
-    )
+    shared.render_data_load_error(load_error)
     st.stop()
 
 
@@ -259,10 +256,10 @@ if "hire_date" in df.columns:
 # PAGE HEADER
 
 st.markdown(
-    """
+    f"""
     <div style="margin-bottom:1.5rem;">
         <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:.25rem;">
-            <span style="font-size:1.8rem;">👤</span>
+            <span style="display:inline-flex;color:#7C3AED;">{shared.icon_svg("users", size=30, color="#7C3AED")}</span>
             <div>
                 <h1 style="margin:0;font-size:1.8rem;font-weight:800;
                            background:linear-gradient(135deg,#7C3AED,#2563EB);
@@ -282,10 +279,12 @@ st.markdown(
 
 # Filter badges
 active_filters = {
-    "🏢": sel_dept, "⚧": sel_gender,
-    "🟢": sel_status, "📅": sel_year,
+    "building": sel_dept,
+    "users": sel_gender,
+    "check": sel_status,
+    "calendar": sel_year,
 }
-badges = [f"{icon} {val}" for icon, val in active_filters.items() if val != "All"]
+badges = [shared.icon_label(icon, val, color="#7C3AED", size=14) for icon, val in active_filters.items() if val != "All"]
 if badges:
     badge_html = " &nbsp; · &nbsp; ".join(
         f'<span style="background:rgba(124,58,237,.1);color:#7C3AED;'
@@ -307,12 +306,12 @@ st.markdown('<hr>', unsafe_allow_html=True)
 kpi_cols = st.columns(6)
 
 kpi_data = [
-    ("👥 Total Employees",    f"{total_emp:,}",                       f"{active_emp:,} active"),
-    ("🏢 Departments",        str(num_depts) if num_depts else "N/A",  "active business units"),
-    ("💼 Job Titles",         str(num_jobs)  if num_jobs  else "N/A",  "distinct positions"),
-    ("🎂 Average Age",        f"{avg_age:.1f} yrs" if avg_age else "N/A",    "years"),
-    ("⏳ Average Tenure",     f"{avg_tenure:.1f} yrs" if avg_tenure else "N/A", "tenure length"),
-    ("🆕 New Hires (12 mo)",  f"{new_hires:,}",                        "new employee(s)"),
+    ("Total Employees",    f"{total_emp:,}",                       f"{active_emp:,} active"),
+    ("Departments",        str(num_depts) if num_depts else "N/A",  "active business units"),
+    ("Job Titles",         str(num_jobs)  if num_jobs  else "N/A",  "distinct positions"),
+    ("Average Age",        f"{avg_age:.1f} yrs" if avg_age else "N/A",    "years"),
+    ("Average Tenure",     f"{avg_tenure:.1f} yrs" if avg_tenure else "N/A", "tenure length"),
+    ("New Hires (12 mo)",  f"{new_hires:,}",                        "new employee(s)"),
 ]
 
 for col, (label, value, delta) in zip(kpi_cols, kpi_data):
@@ -325,11 +324,11 @@ st.markdown("<br>", unsafe_allow_html=True)
 # TABS
 
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "⚧ Gender",
-    "🎂 Age Group",
-    "🏢 Department",
-    "💼 Job & Tenure",
-    "📈 Recruitment Trend",
+    "Gender",
+    "Age Group",
+    "Department",
+    "Job & Tenure",
+    "Recruitment Trend",
 ])
 
 
@@ -616,7 +615,7 @@ with tab2:
 
         st.markdown(
             '<div style="font-size:.85rem;font-weight:600;margin-bottom:.5rem;">'
-            '📋 Age Group Summary</div>',
+            f'{shared.icon_label("table", "Age Group Summary", color="#7C3AED", size=16)}</div>',
             unsafe_allow_html=True,
         )
         st.dataframe(
@@ -766,7 +765,7 @@ with tab3:
         # Detail Table
         st.markdown(
             '<div style="font-size:.85rem;font-weight:600;margin:.5rem 0;">'
-            '📋 Department Detail Table</div>',
+            f'{shared.icon_label("table", "Department Detail Table", color="#7C3AED", size=16)}</div>',
             unsafe_allow_html=True,
         )
         display_cols  = [DEPT_COL, "headcount"]
@@ -1085,7 +1084,8 @@ with tab5:
 if show_table:
     st.markdown('<hr>', unsafe_allow_html=True)
     st.markdown(
-        '<div style="font-size:1rem;font-weight:700;margin-bottom:.75rem;">🗂️ Detailed Employee Data</div>',
+        f'<div style="font-size:1rem;font-weight:700;margin-bottom:.75rem;">'
+        f'{shared.icon_label("table", "Detailed Employee Data", color="#7C3AED", size=16)}</div>',
         unsafe_allow_html=True,
     )
 
@@ -1127,7 +1127,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 st.markdown(
     '<div style="text-align:center;padding:1.5rem 0;'
     'font-size:.75rem;color:var(--text-muted);">'
-    '👤 Workforce Analysis · HR Analytics Dashboard &nbsp;·&nbsp; '
+    'Workforce Analysis · HR Analytics Dashboard &nbsp;·&nbsp; '
     'Data is synthetic for demonstration purposes</div>',
     unsafe_allow_html=True,
 )

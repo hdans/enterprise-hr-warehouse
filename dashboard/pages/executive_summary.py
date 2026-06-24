@@ -19,7 +19,7 @@ from pathlib import Path
 # Page Configuration
 st.set_page_config(
     page_title="Executive Summary · HR Analytics",
-    page_icon="🏢",
+    page_icon=":material/corporate_fare:",
     layout="wide",
 )
 
@@ -194,7 +194,7 @@ try:
     data_loaded = True
 except Exception as e:
     data_loaded = False
-    load_error  = str(e)
+    load_error  = e
 
 PLOTLY_LAYOUT = shared.get_plotly_theme()
 PALETTE = shared.get_palette()
@@ -217,7 +217,7 @@ with st.sidebar:
         if "department_id" in emp_df.columns and "department_name" in dept_df.columns:
             dept_map = dict(zip(dept_df["department_id"], dept_df["department_name"]))
             dept_options += sorted(dept_df["department_name"].dropna().unique().tolist())
-        sel_dept = st.selectbox("🏢 Department", dept_options)
+        sel_dept = st.selectbox("Department", dept_options)
 
         # Employment status filter
         status_col = next(
@@ -226,14 +226,14 @@ with st.sidebar:
         )
         if status_col:
             status_opts = ["All"] + sorted(emp_df[status_col].dropna().unique().tolist())
-            sel_status = st.selectbox("👤 Employment Status", status_opts)
+            sel_status = st.selectbox("Employment Status", status_opts)
         else:
             sel_status = "All"
 
         # Year filter (based on payroll trend)
         if not pay_trend.empty:
             years = sorted(pay_trend["month"].dt.year.unique(), reverse=True)
-            sel_year = st.selectbox("📅 Year", ["All"] + [str(y) for y in years])
+            sel_year = st.selectbox("Year", ["All"] + [str(y) for y in years])
         else:
             sel_year = "All"
     else:
@@ -243,7 +243,7 @@ with st.sidebar:
     st.markdown("---")
     st.markdown(
         "<div style='font-size:.7rem;color:#64748B;padding:.5rem;line-height:1.5;'>"
-        "📄 Synthetic data · Not production data"
+        f"{shared.icon_label('database', 'Synthetic data · Not production data', color='#94A3B8', size=14)}"
         "</div>",
         unsafe_allow_html=True,
     )
@@ -252,11 +252,7 @@ with st.sidebar:
 # GUARD — Data Unavailable
 
 if not data_loaded:
-    st.error(
-        f"❌ **File not found**: `{load_error}`\n\n"
-        "Make sure the `data/oltp/` folder contains all required CSV files, "
-        "then refresh the page."
-    )
+    shared.render_data_load_error(load_error)
     st.stop()
 
 
@@ -330,10 +326,10 @@ low_perf  = (filtered_master[score_col_master] < 2.5).sum()  if score_col_master
 # PAGE HEADER
 
 st.markdown(
-    """
+    f"""
     <div style="margin-bottom: 1.5rem;">
         <div style="display:flex; align-items:center; gap:.75rem; margin-bottom:.25rem;">
-            <span style="font-size:1.8rem;">🏢</span>
+            <span style="display:inline-flex;color:#2563EB;">{shared.icon_svg("building", size=30, color="#2563EB")}</span>
             <div>
                 <h1 style="margin:0; font-size:1.8rem; font-weight:800;
                            background:linear-gradient(135deg,#2563EB,#7C3AED);
@@ -354,9 +350,9 @@ st.markdown(
 # Active filter badges
 if any(f != "All" for f in [sel_dept, sel_status, sel_year]):
     badges = []
-    if sel_dept   != "All": badges.append(f"🏢 {sel_dept}")
-    if sel_status != "All": badges.append(f"👤 {sel_status}")
-    if sel_year   != "All": badges.append(f"📅 {sel_year}")
+    if sel_dept   != "All": badges.append(shared.icon_label("building", sel_dept, color="#2563EB", size=14))
+    if sel_status != "All": badges.append(shared.icon_label("users", sel_status, color="#2563EB", size=14))
+    if sel_year   != "All": badges.append(shared.icon_label("calendar", sel_year, color="#2563EB", size=14))
 
     badge_html = " &nbsp;·&nbsp; ".join(
         f'<span style="background:rgba(37,99,235,.1);color:#2563EB;'
@@ -389,7 +385,7 @@ col1, col2, col3, col4, col5 = st.columns(5)
 
 with col1:
     st.metric(
-        label="👥 Total Employees",
+        label="Total Employees",
         value=f"{total_employees:,}",
         delta=f"{active_employees:,} Active",
         delta_color="normal",
@@ -397,7 +393,7 @@ with col1:
 
 with col2:
     st.metric(
-        label="⭐ Avg. Performance",
+        label="Avg. Performance",
         value=f"{avg_performance:.2f}" if avg_performance else "N/A",
         delta="out of 5.0 scale",
         delta_color="off",
@@ -405,7 +401,7 @@ with col2:
 
 with col3:
     st.metric(
-        label="💰 Total Payroll Spend",
+        label="Total Payroll Spend",
         value=fmt_currency(total_payroll),
         delta=f"Avg {fmt_currency(avg_salary)}/person",
         delta_color="off",
@@ -413,7 +409,7 @@ with col3:
 
 with col4:
     st.metric(
-        label="🔄 Turnover Rate",
+        label="Turnover Rate",
         value=f"{turnover_rate:.1f}%",
         delta="needs attention" if turnover_rate > 10 else "within normal range",
         delta_color="inverse" if turnover_rate > 10 else "normal",
@@ -422,7 +418,7 @@ with col4:
 with col5:
     perf_rate = (high_perf / total_employees * 100) if total_employees else 0.0
     st.metric(
-        label="🌟 High Performers",
+        label="High Performers",
         value=f"{high_perf:,}",
         delta=f"{perf_rate:.1f}% of total",
         delta_color="normal",
@@ -434,7 +430,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 # VISUALIZATION TABS
 
 tab1, tab2, tab3, tab4 = st.tabs(
-    ["📈 Payroll Trend", "⭐ Performance Trend", "🏢 By Department", "🔍 Distribution"]
+    ["Payroll Trend", "Performance Trend", "By Department", "Distribution"]
 )
 
 
@@ -731,7 +727,7 @@ with tab3:
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown(
             '<div style="font-size:.85rem;font-weight:600;margin-bottom:.5rem;">'
-            '📋 Department Summary Table</div>',
+            f'{shared.icon_label("table", "Department Summary Table", color="#059669", size=16)}</div>',
             unsafe_allow_html=True,
         )
 
@@ -863,7 +859,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 st.markdown(
     '<div style="text-align:center;padding:1.5rem 0;'
     'font-size:.75rem;color:var(--text-muted);">'
-    '🏢 Executive Summary · HR Analytics Dashboard &nbsp;·&nbsp; '
+    'Executive Summary · HR Analytics Dashboard &nbsp;·&nbsp; '
     'Synthetic data for demonstration purposes</div>',
     unsafe_allow_html=True,
 )

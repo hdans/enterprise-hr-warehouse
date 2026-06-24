@@ -15,7 +15,7 @@ import numpy as np
 # Page Config
 st.set_page_config(
     page_title="Performance Analysis · HR Analytics",
-    page_icon="📊",
+    page_icon=":material/analytics:",
     layout="wide",
 )
 
@@ -136,16 +136,17 @@ with st.spinner("Loading performance data…"):
         df = build_master(raw_perf, raw_emp, raw_dept)
         data_ok = True
     except Exception as e:
-        st.error(f"❌ Error loading data: {e}")
+        load_error = e
         data_ok = False
 
 if not data_ok:
+    shared.render_data_load_error(load_error)
     st.stop()
 
 # Page Header
 st.markdown("""
 <div style="display:flex;align-items:center;gap:.75rem;margin-bottom:1.5rem;">
-    <span style="font-size:1.8rem;">📊</span>
+    <span style="display:inline-flex;color:#D97706;">""" + shared.icon_svg("bar-chart", size=30, color="#D97706") + """</span>
     <div>
         <h1 style="margin:0;font-size:1.8rem;font-weight:800;
                    background:linear-gradient(135deg,#D97706,#DC2626);
@@ -161,7 +162,7 @@ st.markdown("""
 # Sidebar Filters
 with st.sidebar:
     shared.add_sidebar_header()
-    st.markdown("### 🎛️ Filters")
+    st.markdown("### Filters")
 
     if "department_name" in df.columns:
         all_depts = sorted(df["department_name"].dropna().unique().tolist())
@@ -202,7 +203,7 @@ with st.sidebar:
         score_range = None
 
     st.markdown("---")
-    st.caption("💡 Filters apply to all charts on this page.")
+    st.caption("Filters apply to all charts on this page.")
 
 # Apply Filters
 fdf = df.copy()
@@ -224,7 +225,7 @@ if score_range and "performance_score" in fdf.columns:
 
 # Validate Score Column
 if "performance_score" not in fdf.columns:
-    st.warning("⚠️ Performance score column not found. Ensure `performance_logs.csv` has a column named `score`, `performance_score`, or `rating`.")
+    st.warning("Performance score column not found. Ensure `performance_logs.csv` has a column named `score`, `performance_score`, or `rating`.")
     st.stop()
 
 score_col = "performance_score"
@@ -243,15 +244,15 @@ theme = plotly_theme()
 
 col_k1, col_k2, col_k3, col_k4, col_k5 = st.columns(5)
 with col_k1:
-    st.metric("⭐ Avg Score", f"{avg_score:.2f}", f"out of {max_possible:.0f} max")
+    st.metric("Avg Score", f"{avg_score:.2f}", f"out of {max_possible:.0f} max")
 with col_k2:
-    st.metric("📊 Median Score", f"{median_score:.2f}", "distribution midpoint")
+    st.metric("Median Score", f"{median_score:.2f}", "distribution midpoint")
 with col_k3:
-    st.metric("📋 Total Reviews", f"{total_reviews:,}", "entries after filter")
+    st.metric("Total Reviews", f"{total_reviews:,}", "entries after filter")
 with col_k4:
-    st.metric("🌟 Excellent Rate", f"{excellent_pct:.1f}%", "employees in Excellent tier")
+    st.metric("Excellent Rate", f"{excellent_pct:.1f}%", "employees in Excellent tier")
 with col_k5:
-    st.metric("⚠️ Below Average Rate", f"{below_avg_pct:.1f}%", "Below Avg + Poor tier")
+    st.metric("Below Average Rate", f"{below_avg_pct:.1f}%", "Below Avg + Poor tier")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -443,7 +444,7 @@ if "department_name" in fdf.columns:
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ROW 5 — Raw Data Preview
-with st.expander("🗂️ Raw Data Preview (after filters)", expanded=False):
+with st.expander("Raw Data Preview (after filters)", expanded=False):
     preview_cols = [c for c in [
         "employee_id", "employee_name", "department_name",
         score_col, "grade", "review_date",
